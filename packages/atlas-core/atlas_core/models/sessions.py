@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from atlas_core.models.base import AtlasModel, AtlasRequestModel, TimestampedModel
+from atlas_core.models.base import AtlasModel, AtlasRequestModel
 
 
 class MessageRole(StrEnum):
