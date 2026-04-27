@@ -37,7 +37,7 @@ router = APIRouter()
 log = structlog.get_logger("atlas.api.ws")
 prompt_builder = SystemPromptBuilder(prompt_registry)
 
-CONTEXT_WINDOW_TURNS = 20  # Plan 5 will adapt this dynamically
+CONTEXT_WINDOW_TURNS = 20
 
 
 @router.websocket("/ws/{session_id}")
