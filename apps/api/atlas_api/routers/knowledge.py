@@ -17,7 +17,7 @@ from atlas_core.db.converters import (
     ingestion_job_from_orm,
     knowledge_node_from_orm,
 )
-from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM
+from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.models.ingestion import (
     IngestionJob,
@@ -59,6 +59,8 @@ async def ingest_endpoint(
             status_code=400,
             detail="source_type=markdown for this endpoint; use multipart upload for PDFs",
         )
+    if await db.get(ProjectORM, payload.project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
     parsed = parse_markdown(payload.text or "", title=None)
     job_id = await service.ingest(
         db=db,
@@ -82,6 +84,8 @@ async def ingest_pdf_endpoint(
     service: IngestionService = Depends(get_ingestion_service),
     settings: AtlasConfig = Depends(get_settings),
 ) -> IngestionJob:
+    if await db.get(ProjectORM, project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
     data = await file.read()
     parsed = parse_pdf(data, source_filename=file.filename)
     job_id = await service.ingest(

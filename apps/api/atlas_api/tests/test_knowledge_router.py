@@ -76,3 +76,17 @@ async def test_delete_unknown_node_returns_404(app_with_knowledge_overrides):
 
     resp = await app_with_knowledge_overrides.delete(f"/api/v1/knowledge/nodes/{uuid4()}")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ingest_unknown_project_returns_404(app_with_knowledge_overrides):
+    from uuid import uuid4
+
+    body = {
+        "project_id": str(uuid4()),
+        "source_type": "markdown",
+        "text": "# hello\n\nbody",
+    }
+    resp = await app_with_knowledge_overrides.post("/api/v1/knowledge/ingest", json=body)
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "project not found"
