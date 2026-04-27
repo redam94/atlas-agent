@@ -11,8 +11,8 @@ Phase 1 — Foundation. See `docs/superpowers/specs/` and `docs/superpowers/plan
 Prerequisites: Python 3.13, uv, Docker, Docker Compose.
 
 ```bash
-# 1. Install Python deps
-uv sync
+# 1. Install Python deps (--all-packages installs every workspace member)
+uv sync --all-packages
 
 # 2. Configure environment
 cp .env.example .env
@@ -26,7 +26,7 @@ uv run uvicorn atlas_api.main:app --reload --host 0.0.0.0 --port 8000
 
 # 5. Verify
 curl http://localhost:8000/health
-# {"status": "ok", "environment": "development"}
+# {"status": "ok", "environment": "development", "version": "0.1.0"}
 
 # 6. Run tests
 uv run pytest
