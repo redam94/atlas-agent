@@ -19,6 +19,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 REPO_ROOT = Path(__file__).parent
 TEST_DB_NAME = "atlas_test"
@@ -65,12 +66,14 @@ def setup_test_database():
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
     """Session-scoped async engine for the test DB."""
-    engine = create_async_engine(TEST_DB_URL, pool_pre_ping=True)
+    engine = create_async_engine(
+        TEST_DB_URL, pool_pre_ping=True, poolclass=NullPool
+    )
     yield engine
     await engine.dispose()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
     """Per-test async session with savepoint rollback for isolation.
 
@@ -88,11 +91,12 @@ async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
         await outer_tx.rollback()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def app_client(db_session):
     """FastAPI ASGI test client with `get_session` overridden to use db_session.
 
     Yields an `httpx.AsyncClient` bound to the app via ASGITransport.
+    Also manually invokes the lifespan to ensure app.state is initialized.
     """
     from httpx import ASGITransport, AsyncClient
 
@@ -103,10 +107,20 @@ async def app_client(db_session):
         yield db_session
 
     app.dependency_overrides[get_session] = _override_session
+
+    # Manually trigger lifespan startup
+    lifespan_manager = app.router.lifespan_context(app)
+    await lifespan_manager.__aenter__()
+
     try:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as client:
             yield client
     finally:
+        # Cleanup
+        try:
+            await lifespan_manager.__aexit__(None, None, None)
+        except Exception:
+            pass
         app.dependency_overrides.clear()
