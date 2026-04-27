@@ -1,0 +1,69 @@
+"""Tests for atlas_core.models.base."""
+from datetime import datetime
+from uuid import UUID
+
+import pytest
+from pydantic import ValidationError
+
+from atlas_core.models.base import AtlasModel, MutableAtlasModel, TimestampedModel
+
+
+class _Sample(AtlasModel):
+    name: str
+    count: int
+
+
+class _MutableSample(MutableAtlasModel):
+    value: int
+
+
+class _TimedSample(TimestampedModel):
+    label: str
+
+
+def test_atlas_model_is_strict_no_int_to_str_coercion():
+    with pytest.raises(ValidationError):
+        _Sample(name=123, count=1)
+
+
+def test_atlas_model_is_strict_no_str_to_int_coercion():
+    with pytest.raises(ValidationError):
+        _Sample(name="hello", count="1")
+
+
+def test_atlas_model_is_frozen():
+    instance = _Sample(name="hello", count=1)
+    with pytest.raises(ValidationError):
+        instance.name = "changed"
+
+
+def test_atlas_model_copy_with_update_works():
+    instance = _Sample(name="hello", count=1)
+    updated = instance.model_copy(update={"name": "world"})
+    assert updated.name == "world"
+    assert instance.name == "hello"  # original unchanged
+
+
+def test_mutable_atlas_model_allows_assignment():
+    instance = _MutableSample(value=1)
+    instance.value = 2
+    assert instance.value == 2
+
+
+def test_mutable_atlas_model_validates_assignment():
+    instance = _MutableSample(value=1)
+    with pytest.raises(ValidationError):
+        instance.value = "not an int"
+
+
+def test_timestamped_model_provides_id_and_timestamps():
+    instance = _TimedSample(label="x")
+    assert isinstance(instance.id, UUID)
+    assert isinstance(instance.created_at, datetime)
+    assert isinstance(instance.updated_at, datetime)
+
+
+def test_timestamped_model_id_is_unique_per_instance():
+    a = _TimedSample(label="a")
+    b = _TimedSample(label="b")
+    assert a.id != b.id
