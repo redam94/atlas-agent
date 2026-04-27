@@ -1,5 +1,6 @@
 """Tests for atlas_core.models.base."""
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
 
 import pytest
@@ -67,3 +68,25 @@ def test_timestamped_model_id_is_unique_per_instance():
     a = _TimedSample(label="a")
     b = _TimedSample(label="b")
     assert a.id != b.id
+
+
+class _Status(str, Enum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+
+
+class _WithEnum(AtlasModel):
+    status: _Status
+
+
+def test_enum_field_keeps_enum_member_after_init():
+    """Without use_enum_values=True, enum fields preserve the enum type."""
+    instance = _WithEnum(status=_Status.ACTIVE)
+    assert instance.status is _Status.ACTIVE
+    assert isinstance(instance.status, _Status)
+
+
+def test_mutable_atlas_model_is_subclass_of_atlas_model():
+    """Inheritance contract: isinstance(MutableAtlasModel(), AtlasModel) is True."""
+    instance = _MutableSample(value=1)
+    assert isinstance(instance, AtlasModel)

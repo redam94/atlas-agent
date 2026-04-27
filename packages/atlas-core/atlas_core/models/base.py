@@ -17,26 +17,25 @@ def _utcnow() -> datetime:
 
 
 class AtlasModel(BaseModel):
-    """Strict, frozen base. Use ``model_copy(update=...)`` to derive new instances."""
+    """Strict, frozen base. Use ``model_copy(update=...)`` to derive new instances.
+
+    Note: ``updated_at`` on ``TimestampedModel`` is authoritative at the DB level
+    (Postgres ``ON UPDATE`` trigger or SQLAlchemy ``onupdate=func.now()``);
+    in-memory ``model_copy`` does not refresh it.
+    """
 
     model_config = ConfigDict(
         strict=True,
         frozen=True,
         populate_by_name=True,
-        use_enum_values=True,
-        validate_assignment=True,
     )
 
 
-class MutableAtlasModel(BaseModel):
+class MutableAtlasModel(AtlasModel):
     """Strict, mutable base for stateful objects (e.g. agent state)."""
 
     model_config = ConfigDict(
-        strict=True,
-        frozen=False,
-        populate_by_name=True,
-        use_enum_values=True,
-        validate_assignment=True,
+        **{**AtlasModel.model_config, "frozen": False, "validate_assignment": True},
     )
 
 
