@@ -1,5 +1,6 @@
 """Tests for atlas_core.models.messages."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -21,7 +22,7 @@ def test_message_construction():
         session_id=uuid4(),
         role=MessageRole.USER,
         content="hello",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     assert m.role is MessageRole.USER
 
@@ -33,7 +34,7 @@ def test_message_optional_fields_default_none():
         session_id=uuid4(),
         role=MessageRole.USER,
         content="hi",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     assert m.tool_calls is None
     assert m.rag_context is None

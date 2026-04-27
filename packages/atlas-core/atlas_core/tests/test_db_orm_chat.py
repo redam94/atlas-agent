@@ -1,4 +1,5 @@
 """Structural tests for the chat-related ORM models."""
+
 from sqlalchemy import inspect
 
 from atlas_core.db.orm import MessageORM, ModelUsageORM, SessionORM

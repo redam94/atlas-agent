@@ -67,9 +67,7 @@ class SessionORM(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
-    __table_args__ = (
-        Index("sessions_user_project_idx", "user_id", "project_id"),
-    )
+    __table_args__ = (Index("sessions_user_project_idx", "user_id", "project_id"),)
 
 
 class MessageORM(Base):
@@ -98,9 +96,7 @@ class MessageORM(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
-    __table_args__ = (
-        Index("messages_session_idx", "session_id", "created_at"),
-    )
+    __table_args__ = (Index("messages_session_idx", "session_id", "created_at"),)
 
 
 class ModelUsageORM(Base):
@@ -134,6 +130,4 @@ class ModelUsageORM(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
-    __table_args__ = (
-        Index("model_usage_user_created_idx", "user_id", "created_at"),
-    )
+    __table_args__ = (Index("model_usage_user_created_idx", "user_id", "created_at"),)

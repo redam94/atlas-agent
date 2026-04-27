@@ -1,4 +1,5 @@
 """Tests for atlas_core.models.llm."""
+
 from atlas_core.models.llm import (
     ModelEvent,
     ModelEventType,

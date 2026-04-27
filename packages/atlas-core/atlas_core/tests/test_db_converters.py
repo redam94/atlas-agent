@@ -1,5 +1,6 @@
 """Tests for atlas_core.db.converters — pure conversion logic, no DB roundtrip."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from atlas_core.db.converters import message_from_orm, session_from_orm
@@ -12,8 +13,8 @@ def _build_session_row() -> SessionORM:
         user_id="matt",
         project_id=uuid4(),
         model="claude-sonnet-4-6",
-        created_at=datetime.now(timezone.utc),
-        last_active_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        last_active_at=datetime.now(UTC),
     )
 
 
@@ -28,7 +29,7 @@ def _build_message_row() -> MessageORM:
         rag_context=None,
         model="claude-sonnet-4-6",
         token_count=10,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

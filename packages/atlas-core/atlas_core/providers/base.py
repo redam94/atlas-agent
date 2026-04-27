@@ -1,4 +1,5 @@
 """LLM provider ABC and shared error type."""
+
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any

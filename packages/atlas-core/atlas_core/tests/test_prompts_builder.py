@@ -1,4 +1,5 @@
 """Tests for SystemPromptBuilder."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 

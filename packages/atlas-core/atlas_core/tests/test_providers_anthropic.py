@@ -1,4 +1,5 @@
 """Tests for AnthropicProvider — uses a fake AsyncAnthropic transport."""
+
 from typing import Any
 from unittest.mock import MagicMock
 

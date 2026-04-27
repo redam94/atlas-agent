@@ -1,4 +1,5 @@
 """Pydantic models for chat sessions."""
+
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID

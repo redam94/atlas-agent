@@ -3,6 +3,7 @@
 Importable from ``atlas_core.providers`` so test files don't need to reach
 into private modules.
 """
+
 from collections.abc import AsyncIterator
 from typing import Any
 

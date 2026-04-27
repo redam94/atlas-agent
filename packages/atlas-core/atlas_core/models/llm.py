@@ -6,6 +6,7 @@ provider implementation translates its native chunks into these types.
 plugin layer; Phase 1 providers never emit tool events but the type
 plumbing is in place.
 """
+
 from enum import StrEnum
 from typing import Any
 

@@ -1,4 +1,5 @@
 """Tests for ModelRegistry + ModelRouter."""
+
 from uuid import uuid4
 
 import pytest
@@ -9,8 +10,11 @@ from atlas_core.providers import FakeProvider
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
 
 
-def _project(privacy: PrivacyLevel = PrivacyLevel.CLOUD_OK, default_model: str = "claude-sonnet-4-6") -> Project:
+def _project(
+    privacy: PrivacyLevel = PrivacyLevel.CLOUD_OK, default_model: str = "claude-sonnet-4-6"
+) -> Project:
     from datetime import UTC, datetime
+
     return Project(
         id=uuid4(),
         user_id="matt",
@@ -50,8 +54,12 @@ def test_model_router_uses_explicit_override():
     router = ModelRouter(reg)
 
     # Manually set fake provider provider name to mimic real ones for the policy
-    cloud.spec = ModelSpec(provider="anthropic", model_id="cloud-1", context_window=1, supports_tools=False)
-    local.spec = ModelSpec(provider="lmstudio", model_id="local-1", context_window=1, supports_tools=False)
+    cloud.spec = ModelSpec(
+        provider="anthropic", model_id="cloud-1", context_window=1, supports_tools=False
+    )
+    local.spec = ModelSpec(
+        provider="lmstudio", model_id="local-1", context_window=1, supports_tools=False
+    )
 
     chosen = router.select(_project(), model_override="local-1")
     assert chosen is local
@@ -61,8 +69,12 @@ def test_model_router_local_only_picks_lmstudio():
     reg = ModelRegistry()
     cloud = FakeProvider(model_id="cloud-1")
     local = FakeProvider(model_id="local-1")
-    cloud.spec = ModelSpec(provider="anthropic", model_id="cloud-1", context_window=1, supports_tools=False)
-    local.spec = ModelSpec(provider="lmstudio", model_id="local-1", context_window=1, supports_tools=False)
+    cloud.spec = ModelSpec(
+        provider="anthropic", model_id="cloud-1", context_window=1, supports_tools=False
+    )
+    local.spec = ModelSpec(
+        provider="lmstudio", model_id="local-1", context_window=1, supports_tools=False
+    )
     reg.register(cloud)
     reg.register(local)
 
@@ -74,7 +86,9 @@ def test_model_router_local_only_picks_lmstudio():
 def test_model_router_falls_back_to_default_model():
     reg = ModelRegistry()
     fp = FakeProvider(model_id="claude-sonnet-4-6")
-    fp.spec = ModelSpec(provider="anthropic", model_id="claude-sonnet-4-6", context_window=1, supports_tools=False)
+    fp.spec = ModelSpec(
+        provider="anthropic", model_id="claude-sonnet-4-6", context_window=1, supports_tools=False
+    )
     reg.register(fp)
 
     router = ModelRouter(reg)
@@ -85,7 +99,9 @@ def test_model_router_falls_back_to_default_model():
 def test_model_router_raises_if_local_only_and_no_local_provider():
     reg = ModelRegistry()
     cloud = FakeProvider(model_id="cloud-1")
-    cloud.spec = ModelSpec(provider="anthropic", model_id="cloud-1", context_window=1, supports_tools=False)
+    cloud.spec = ModelSpec(
+        provider="anthropic", model_id="cloud-1", context_window=1, supports_tools=False
+    )
     reg.register(cloud)
 
     router = ModelRouter(reg)

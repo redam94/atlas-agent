@@ -1,4 +1,5 @@
 """Compose a system prompt for a chat turn from modular template sections."""
+
 from datetime import UTC, datetime
 
 from atlas_core.models.projects import Project

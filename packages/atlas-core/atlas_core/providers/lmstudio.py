@@ -1,4 +1,5 @@
 """LM Studio provider — uses openai.AsyncOpenAI against the LM Studio endpoint."""
+
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -23,7 +24,7 @@ class LMStudioProvider(BaseModel):
         *,
         context_window: int = 8192,
         supports_tools: bool = False,  # local models vary; default off
-        api_key: str = "lm-studio",   # ignored by LM Studio but required by SDK
+        api_key: str = "lm-studio",  # ignored by LM Studio but required by SDK
         _client: Any | None = None,
     ) -> None:
         self.spec = ModelSpec(

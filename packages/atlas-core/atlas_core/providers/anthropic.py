@@ -1,4 +1,5 @@
 """Anthropic provider — wraps anthropic.AsyncAnthropic.messages.stream."""
+
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -72,7 +73,9 @@ class AnthropicProvider(BaseModel):
                     elif et in ("message_delta", "message_stop"):
                         usage = getattr(event, "usage", None)
                         if usage is not None:
-                            input_tokens = getattr(usage, "input_tokens", input_tokens) or input_tokens
+                            input_tokens = (
+                                getattr(usage, "input_tokens", input_tokens) or input_tokens
+                            )
                             output_tokens = (
                                 getattr(usage, "output_tokens", output_tokens) or output_tokens
                             )

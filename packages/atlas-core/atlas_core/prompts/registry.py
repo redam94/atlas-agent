@@ -5,6 +5,7 @@ Templates live under ``atlas_core/prompts/templates/``. The default
 throughout the app; tests can construct fresh ``PromptRegistry()``
 instances if they need isolation.
 """
+
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateNotFound

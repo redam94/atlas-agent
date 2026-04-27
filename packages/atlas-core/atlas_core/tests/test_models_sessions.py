@@ -1,5 +1,6 @@
 """Tests for atlas_core.models.sessions."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -21,8 +22,8 @@ def test_session_construction_with_all_fields():
         user_id="matt",
         project_id=uuid4(),
         model="claude-sonnet-4-6",
-        created_at=datetime.now(timezone.utc),
-        last_active_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        last_active_at=datetime.now(UTC),
     )
     assert s.user_id == "matt"
 

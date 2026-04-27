@@ -1,4 +1,5 @@
 """GET /api/v1/models — list registered LLM providers."""
+
 from atlas_core.models.llm import ModelSpec
 from atlas_core.providers.registry import ModelRegistry
 from fastapi import APIRouter, Depends

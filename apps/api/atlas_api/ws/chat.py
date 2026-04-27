@@ -9,6 +9,7 @@ Per-message flow:
   6. Stream ModelEvents → translate to StreamEvents → send to client.
   7. On done: persist user + assistant Message rows + ModelUsage row.
 """
+
 from __future__ import annotations
 
 import time
@@ -167,21 +168,13 @@ async def _handle_chat_message(
         if event.type == ModelEventType.TOKEN:
             text = event.data.get("text", "")
             assistant_text_parts.append(text)
-            sequence = await _send(
-                websocket, StreamEventType.TOKEN, {"token": text}, sequence
-            )
+            sequence = await _send(websocket, StreamEventType.TOKEN, {"token": text}, sequence)
         elif event.type == ModelEventType.TOOL_CALL:
-            sequence = await _send(
-                websocket, StreamEventType.TOOL_CALL, event.data, sequence
-            )
+            sequence = await _send(websocket, StreamEventType.TOOL_CALL, event.data, sequence)
         elif event.type == ModelEventType.TOOL_RESULT:
-            sequence = await _send(
-                websocket, StreamEventType.TOOL_RESULT, event.data, sequence
-            )
+            sequence = await _send(websocket, StreamEventType.TOOL_RESULT, event.data, sequence)
         elif event.type == ModelEventType.ERROR:
-            return await _send(
-                websocket, StreamEventType.ERROR, event.data, sequence
-            )
+            return await _send(websocket, StreamEventType.ERROR, event.data, sequence)
         elif event.type == ModelEventType.DONE:
             usage = event.data.get("usage", {})
 
@@ -239,9 +232,7 @@ async def _send(
     return sequence + 1
 
 
-async def _load_recent_messages(
-    db: AsyncSession, session_id: UUID, limit: int
-) -> list[MessageORM]:
+async def _load_recent_messages(db: AsyncSession, session_id: UUID, limit: int) -> list[MessageORM]:
     result = await db.execute(
         select(MessageORM)
         .where(MessageORM.session_id == session_id)
@@ -268,4 +259,5 @@ def _assemble_messages(
 def _project_to_pydantic(row: ProjectORM):
     """Local converter to avoid circular imports — uses the public converter."""
     from atlas_core.db.converters import project_from_orm
+
     return project_from_orm(row)

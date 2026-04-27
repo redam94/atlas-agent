@@ -1,4 +1,5 @@
 """ATLAS FastAPI application entry point."""
+
 from contextlib import asynccontextmanager
 
 import structlog

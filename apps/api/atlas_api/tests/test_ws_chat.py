@@ -10,6 +10,7 @@ CancelScope must be entered and exited in the same asyncio Task. Pytest-asyncio
 fixture teardown runs in a different task context, which causes RuntimeError on
 exit if the transport is opened as a fixture-level context manager.
 """
+
 import contextlib
 from uuid import UUID
 
@@ -80,6 +81,7 @@ async def make_ws_client():
 async def _seed_project(db_session) -> UUID:
     """Insert a project row and return its id."""
     from atlas_core.db.orm import ProjectORM
+
     p = ProjectORM(
         user_id="matt",
         name="WSTest",
@@ -94,16 +96,22 @@ async def _seed_project(db_session) -> UUID:
 async def test_ws_chat_streams_tokens_and_persists_messages(set_overrides, db_session):
     project_id = await _seed_project(db_session)
     from uuid import uuid4
+
     session_id = uuid4()
 
-    async with make_ws_client() as client, aconnect_ws(
-        f"ws://test/api/v1/ws/{session_id}",
-        client=client,
-    ) as ws:
-        await ws.send_json({
-            "type": "chat.message",
-            "payload": {"text": "hi", "project_id": str(project_id)},
-        })
+    async with (
+        make_ws_client() as client,
+        aconnect_ws(
+            f"ws://test/api/v1/ws/{session_id}",
+            client=client,
+        ) as ws,
+    ):
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {"text": "hi", "project_id": str(project_id)},
+            }
+        )
 
         events = []
         while True:
@@ -136,16 +144,22 @@ async def test_ws_chat_emits_error_event_on_provider_failure(set_overrides, db_s
     set_overrides.select = lambda project, model_override=None: failing  # type: ignore[assignment]
 
     from uuid import uuid4
+
     session_id = uuid4()
 
-    async with make_ws_client() as client, aconnect_ws(
-        f"ws://test/api/v1/ws/{session_id}",
-        client=client,
-    ) as ws:
-        await ws.send_json({
-            "type": "chat.message",
-            "payload": {"text": "hi", "project_id": str(project_id)},
-        })
+    async with (
+        make_ws_client() as client,
+        aconnect_ws(
+            f"ws://test/api/v1/ws/{session_id}",
+            client=client,
+        ) as ws,
+    ):
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {"text": "hi", "project_id": str(project_id)},
+            }
+        )
         msg = await ws.receive_json()
         # The first event should be the error
         assert msg["type"] == "chat.error"
@@ -154,10 +168,14 @@ async def test_ws_chat_emits_error_event_on_provider_failure(set_overrides, db_s
 @pytest.mark.asyncio
 async def test_ws_chat_rejects_unknown_message_type(set_overrides, db_session):
     from uuid import uuid4
-    async with make_ws_client() as client, aconnect_ws(
-        f"ws://test/api/v1/ws/{uuid4()}",
-        client=client,
-    ) as ws:
+
+    async with (
+        make_ws_client() as client,
+        aconnect_ws(
+            f"ws://test/api/v1/ws/{uuid4()}",
+            client=client,
+        ) as ws,
+    ):
         await ws.send_json({"type": "weird.unknown", "payload": {}})
         msg = await ws.receive_json()
         assert msg["type"] == "chat.error"

@@ -7,6 +7,7 @@ router applies the Phase 1 simplified selection policy:
 2. Project ``privacy_level == 'local_only'`` → first ``lmstudio`` provider.
 3. Else → provider matching ``project.default_model``.
 """
+
 from atlas_core.models.llm import ModelSpec
 from atlas_core.models.projects import PrivacyLevel, Project
 from atlas_core.providers.base import BaseModel
@@ -57,7 +58,5 @@ class ModelRouter:
 
         provider = self.registry.get(project.default_model)
         if provider is None:
-            raise ValueError(
-                f"Project default_model '{project.default_model}' not in registry"
-            )
+            raise ValueError(f"Project default_model '{project.default_model}' not in registry")
         return provider

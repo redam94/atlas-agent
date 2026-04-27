@@ -1,4 +1,5 @@
 """Tests for atlas_core.providers.base + the FakeProvider used in WS tests."""
+
 import pytest
 
 from atlas_core.models.llm import ModelEventType

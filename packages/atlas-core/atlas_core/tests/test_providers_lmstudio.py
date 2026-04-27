@@ -1,4 +1,5 @@
 """Tests for LMStudioProvider — uses a fake AsyncOpenAI transport."""
+
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -11,8 +12,13 @@ from atlas_core.providers.lmstudio import LMStudioProvider
 class _FakeOpenAIChunk:
     """Mimics openai.types.chat.ChatCompletionChunk shape."""
 
-    def __init__(self, content: str | None = None, finish_reason: str | None = None,
-                 prompt_tokens: int = 0, completion_tokens: int = 0):
+    def __init__(
+        self,
+        content: str | None = None,
+        finish_reason: str | None = None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+    ):
         delta = MagicMock()
         delta.content = content
         choice = MagicMock()
@@ -54,8 +60,9 @@ async def test_lmstudio_provider_streams_tokens_and_emits_done(fake_client):
             [
                 _FakeOpenAIChunk(content="hello"),
                 _FakeOpenAIChunk(content=" world"),
-                _FakeOpenAIChunk(content=None, finish_reason="stop",
-                                 prompt_tokens=11, completion_tokens=2),
+                _FakeOpenAIChunk(
+                    content=None, finish_reason="stop", prompt_tokens=11, completion_tokens=2
+                ),
             ]
         )
 

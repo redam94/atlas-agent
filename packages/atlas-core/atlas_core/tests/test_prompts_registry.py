@@ -1,4 +1,5 @@
 """Tests for the PromptRegistry."""
+
 import pytest
 from jinja2 import UndefinedError
 
