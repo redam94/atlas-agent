@@ -1,8 +1,10 @@
+import { Button } from "@/components/ui/button";
+
 export function App() {
   return (
-    <div style={{ fontFamily: "system-ui", padding: 24 }}>
-      <h1>ATLAS</h1>
-      <p>Phase 1 frontend scaffold up.</p>
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-semibold">ATLAS</h1>
+      <Button>Hello</Button>
     </div>
   );
 }
