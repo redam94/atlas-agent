@@ -4,6 +4,7 @@ Uses FakeEmbedder + tmp Chroma + FakeProvider to exercise the full retrieve →
 emit `rag.context` → inject context message → persist citations flow without
 touching a real LLM or BGE-small.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -27,7 +28,6 @@ from sqlalchemy import select
 
 from atlas_api.deps import get_model_router, get_retriever, get_session, get_settings
 from atlas_api.main import app
-
 
 # --- fixtures ------------------------------------------------------------
 
@@ -153,20 +153,19 @@ async def test_rag_happy_path_emits_event_and_persists_citations(
     chunk_ids = {str(c.id) for c in chunks}
 
     session_id = uuid4()
-    async with _ws_client() as http:
-        async with aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
-            await ws.send_json(
-                {
-                    "type": "chat.message",
-                    "payload": {
-                        "text": "alpha",
-                        "project_id": str(project_id),
-                        "rag_enabled": True,
-                        "top_k_context": 5,
-                    },
-                }
-            )
-            events = await _drain_events_until_done(ws)
+    async with _ws_client() as http, aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {
+                    "text": "alpha",
+                    "project_id": str(project_id),
+                    "rag_enabled": True,
+                    "top_k_context": 5,
+                },
+            }
+        )
+        events = await _drain_events_until_done(ws)
 
     types = [e["type"] for e in events]
     # The rag.context event must arrive before the first chat.token.
@@ -184,10 +183,10 @@ async def test_rag_happy_path_emits_event_and_persists_citations(
     assert sorted(c["id"] for c in citations) == [1, 2]
 
     rows = (
-        await db_session.execute(
-            select(MessageORM).where(MessageORM.session_id == session_id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(MessageORM).where(MessageORM.session_id == session_id)))
+        .scalars()
+        .all()
+    )
     assistant = next(r for r in rows if r.role == "assistant")
     assert assistant.rag_context is not None
     assert len(assistant.rag_context) == 2
@@ -210,28 +209,27 @@ async def test_rag_disabled_skips_event_and_persists_null(
     )
 
     session_id = uuid4()
-    async with _ws_client() as http:
-        async with aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
-            await ws.send_json(
-                {
-                    "type": "chat.message",
-                    "payload": {
-                        "text": "hello",
-                        "project_id": str(project_id),
-                        "rag_enabled": False,
-                    },
-                }
-            )
-            events = await _drain_events_until_done(ws)
+    async with _ws_client() as http, aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {
+                    "text": "hello",
+                    "project_id": str(project_id),
+                    "rag_enabled": False,
+                },
+            }
+        )
+        events = await _drain_events_until_done(ws)
 
     types = [e["type"] for e in events]
     assert "rag.context" not in types
 
     rows = (
-        await db_session.execute(
-            select(MessageORM).where(MessageORM.session_id == session_id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(MessageORM).where(MessageORM.session_id == session_id)))
+        .scalars()
+        .all()
+    )
     assistant = next(r for r in rows if r.role == "assistant")
     assert assistant.rag_context is None
 
@@ -246,28 +244,27 @@ async def test_empty_knowledge_base_skips_event(set_overrides, db_session):
     await db_session.flush()
 
     session_id = uuid4()
-    async with _ws_client() as http:
-        async with aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
-            await ws.send_json(
-                {
-                    "type": "chat.message",
-                    "payload": {
-                        "text": "anything",
-                        "project_id": str(project_id),
-                        "rag_enabled": True,
-                    },
-                }
-            )
-            events = await _drain_events_until_done(ws)
+    async with _ws_client() as http, aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {
+                    "text": "anything",
+                    "project_id": str(project_id),
+                    "rag_enabled": True,
+                },
+            }
+        )
+        events = await _drain_events_until_done(ws)
 
     types = [e["type"] for e in events]
     assert "rag.context" not in types
     assert "chat.token" in types  # tokens still stream
 
     rows = (
-        await db_session.execute(
-            select(MessageORM).where(MessageORM.session_id == session_id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(MessageORM).where(MessageORM.session_id == session_id)))
+        .scalars()
+        .all()
+    )
     assistant = next(r for r in rows if r.role == "assistant")
     assert assistant.rag_context is None

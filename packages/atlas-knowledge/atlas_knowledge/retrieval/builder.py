@@ -5,6 +5,7 @@ LLM prompt. The citations list mirrors the rendered IDs and is what flows over
 the ``rag.context`` WS event and persists in ``MessageORM.rag_context`` on the
 assistant row.
 """
+
 from __future__ import annotations
 
 from xml.sax.saxutils import escape as xml_escape
@@ -38,7 +39,7 @@ def build_rag_context(scored: list[ScoredChunk]) -> RagContext:
         citations.append(
             {
                 "id": idx,
-                "title": title,            # raw — JSON serialization handles its own escaping
+                "title": title,  # raw — JSON serialization handles its own escaping
                 "score": sc.score,
                 "chunk_id": str(sc.chunk.id),
             }
