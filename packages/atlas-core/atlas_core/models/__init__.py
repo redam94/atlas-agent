@@ -13,15 +13,23 @@ from atlas_core.models.projects import (
     ProjectStatus,
     ProjectUpdate,
 )
+from atlas_core.models.sessions import (
+    MessageRole,
+    Session,
+    SessionCreate,
+)
 
 __all__ = [
     "AtlasModel",
     "AtlasRequestModel",
+    "MessageRole",
     "MutableAtlasModel",
     "PrivacyLevel",
     "Project",
     "ProjectCreate",
     "ProjectStatus",
     "ProjectUpdate",
+    "Session",
+    "SessionCreate",
     "TimestampedModel",
 ]
