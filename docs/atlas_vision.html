@@ -1,0 +1,1313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ATLAS — Vision Document</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Parchment surfaces */
+  --bg-deep: #EFEAD8;
+  --bg: #F3EEDB;
+  --surface: #F8F4E4;
+  --surface-2: #FBF8EC;
+  --card: #FFFCF2;
+  --line: #D6CFB6;
+  --line-soft: #E5DFC7;
+
+  /* Olive accents */
+  --olive: #5C6B2E;
+  --olive-deep: #3D481D;
+  --olive-bright: #7C8B45;
+  --sage: #8A9A55;
+
+  /* "ink" — primary heading color (was light parchment in dark mode) */
+  --parchment: #2A3119;       /* deep olive-black, used for headings */
+  --parchment-soft: #4A5238;  /* secondary ink */
+
+  /* Secondary metallic accents */
+  --brass: #9B7A2E;
+  --brass-deep: #6E561F;
+  --rust: #A0552B;
+
+  /* Body text */
+  --ink: #2A3119;
+  --ink-muted: #6B7152;
+  --ink-faded: #9CA188;
+
+  --display: "Fraunces", "Times New Roman", serif;
+  --body: "Instrument Sans", -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --r-sm: 4px;
+  --r: 10px;
+  --r-lg: 18px;
+
+  --max: 1240px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg-deep); color: var(--ink); }
+body {
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.55;
+  font-feature-settings: "ss01","ss02","cv11";
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Atmospheric tint pools */
+body::before {
+  content: "";
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(1100px 700px at 85% -10%, rgba(124,139,69,.14), transparent 60%),
+    radial-gradient(900px 600px at -10% 35%, rgba(155,122,46,.08), transparent 60%),
+    radial-gradient(1200px 800px at 50% 110%, rgba(92,107,46,.10), transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+/* Subtle paper grain — multiply blend so it darkens slightly */
+body::after {
+  content: "";
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32  0 0 0 0 0.30  0 0 0 0 0.18  0 0 0 0.12 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: .5;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 1;
+}
+
+main, header, footer, section { position: relative; z-index: 2; }
+
+/* ------------ Top nav strip ------------ */
+.bar {
+  border-bottom: 1px solid var(--line);
+  background: rgba(243,238,219,.78);
+  backdrop-filter: blur(14px);
+  position: sticky; top: 0; z-index: 50;
+}
+.bar-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.bar-mono { display: flex; gap: 28px; align-items: center; }
+.bar-mono span { display: inline-flex; align-items: center; gap: 8px; }
+.dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--olive);
+  box-shadow: 0 0 0 3px rgba(92,107,46,.15);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; box-shadow: 0 0 0 3px rgba(92,107,46,.15);}
+  50%     { opacity: .55; box-shadow: 0 0 0 6px rgba(92,107,46,.05);}
+}
+
+/* ------------ Hero ------------ */
+.hero {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 90px 32px 110px;
+  position: relative;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr .9fr;
+  gap: 60px;
+  align-items: end;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .22em;
+  color: var(--olive);
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 36px;
+}
+.eyebrow::before {
+  content: "";
+  width: 36px; height: 1px;
+  background: var(--olive);
+}
+
+.title {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: clamp(72px, 11vw, 168px);
+  line-height: .92;
+  letter-spacing: -.04em;
+  color: var(--parchment);
+  font-variation-settings: "opsz" 144, "SOFT" 60;
+}
+.title em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--olive);
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+}
+.title .ampersand {
+  font-style: italic;
+  color: var(--brass);
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+  display: inline-block;
+  transform: translateY(-.05em);
+  margin: 0 .04em;
+}
+
+.expand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px 38px;
+  margin-top: 38px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--ink-muted);
+}
+.expand span { display: inline-flex; align-items: baseline; gap: 8px; }
+.expand b {
+  font-weight: 500;
+  color: var(--olive-deep);
+  letter-spacing: .04em;
+  text-transform: none;
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.lede {
+  font-family: var(--display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: clamp(20px, 1.8vw, 26px);
+  line-height: 1.45;
+  color: var(--parchment-soft);
+  font-variation-settings: "opsz" 24, "SOFT" 50;
+  border-left: 1px solid var(--olive);
+  padding: 4px 0 4px 26px;
+  max-width: 480px;
+  margin-left: auto;
+}
+.lede small {
+  display: block;
+  margin-top: 18px;
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+}
+
+/* Topographic SVG decoration */
+.topo {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: .55;
+}
+
+/* ------------ Section primitives ------------ */
+.section {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 110px 32px;
+  position: relative;
+}
+.section + .section { padding-top: 0; }
+
+.section-head {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 60px;
+  margin-bottom: 56px;
+  align-items: baseline;
+}
+.section-marker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--olive);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.section-marker b { color: var(--ink-muted); font-weight: 400; }
+
+.section-title {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: clamp(38px, 4.6vw, 64px);
+  line-height: 1.02;
+  letter-spacing: -.02em;
+  color: var(--parchment);
+  font-variation-settings: "opsz" 96, "SOFT" 50;
+  max-width: 22ch;
+}
+.section-title em { font-style: italic; color: var(--olive); }
+
+/* ------------ Manifesto / pull ------------ */
+.manifesto {
+  background: linear-gradient(180deg, var(--surface) 0%, #F0EBD6 100%);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 100px 0;
+}
+.manifesto p {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: clamp(28px, 3.4vw, 46px);
+  line-height: 1.25;
+  letter-spacing: -.012em;
+  color: var(--parchment);
+  font-variation-settings: "opsz" 72, "SOFT" 40;
+  max-width: 1000px;
+  padding: 0 32px;
+  margin: 0 auto;
+}
+.manifesto p em {
+  font-style: italic;
+  color: var(--olive);
+  font-variation-settings: "opsz" 72, "SOFT" 100;
+}
+.manifesto p span.brass {
+  color: var(--brass);
+  font-style: italic;
+}
+
+/* ------------ Pillars ------------ */
+.pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.pillar {
+  background: var(--card);
+  padding: 36px 32px 40px;
+  position: relative;
+  transition: background .35s ease;
+}
+.pillar:hover { background: var(--surface-2); }
+.pillar .num {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .25em;
+  color: var(--olive);
+  margin-bottom: 28px;
+}
+.pillar h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.15;
+  letter-spacing: -.01em;
+  color: var(--parchment);
+  margin-bottom: 14px;
+  font-variation-settings: "opsz" 36, "SOFT" 30;
+}
+.pillar h3 em { font-style: italic; color: var(--olive); font-weight: 300; }
+.pillar p {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+  max-width: 38ch;
+}
+
+/* ------------ Architecture diagram ------------ */
+.arch {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, var(--card), var(--surface));
+  padding: 48px;
+  position: relative;
+  overflow: hidden;
+}
+.arch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(92,107,46,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92,107,46,.08) 1px, transparent 1px);
+  background-size: 36px 36px;
+  pointer-events: none;
+}
+
+.arch-grid {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 28px;
+}
+.arch-row {
+  display: grid;
+  gap: 16px;
+}
+.arch-row.r-2 { grid-template-columns: 1fr 1fr; }
+.arch-row.r-3 { grid-template-columns: 1fr 1fr 1fr; }
+.arch-row.r-1 { grid-template-columns: 1fr; }
+.arch-row.r-3-data { grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+.box {
+  background: rgba(255,252,242,.85);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  transition: border-color .3s ease, transform .3s ease, box-shadow .3s ease;
+}
+.box:hover {
+  border-color: var(--olive);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -10px rgba(61,72,29,.3);
+}
+.box .tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--olive);
+}
+.box h4 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--parchment);
+  letter-spacing: -.01em;
+  font-variation-settings: "opsz" 24, "SOFT" 30;
+}
+.box p {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  letter-spacing: .03em;
+}
+.box.gateway {
+  background: linear-gradient(180deg, rgba(124,139,69,.18), rgba(255,252,242,.9));
+  border-color: var(--olive);
+}
+.box.gateway .tag { color: var(--olive-deep); }
+
+.arch-divider {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  position: relative;
+  margin: 4px 0;
+}
+.arch-divider::before, .arch-divider::after {
+  content: "";
+  display: inline-block;
+  vertical-align: middle;
+  width: 80px; height: 1px;
+  background: var(--line);
+  margin: 0 14px;
+}
+
+/* ------------ Capabilities ------------ */
+.caps {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.cap {
+  background: var(--card);
+  padding: 28px 30px;
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 24px;
+  align-items: baseline;
+  transition: background .3s ease;
+}
+.cap:hover { background: var(--surface-2); }
+.cap .idx {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 38px;
+  color: var(--olive);
+  font-variation-settings: "opsz" 60, "SOFT" 100;
+  line-height: 1;
+}
+.cap h4 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--parchment);
+  margin-bottom: 8px;
+  letter-spacing: -.01em;
+}
+.cap p {
+  font-size: 14px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  max-width: 50ch;
+}
+
+/* ------------ Knowledge Graph showcase ------------ */
+.graph-frame {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background:
+    radial-gradient(800px 400px at 30% 50%, rgba(124,139,69,.18), transparent 60%),
+    linear-gradient(180deg, var(--card) 0%, var(--surface) 100%);
+  height: 540px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+}
+.graph-canvas { position: relative; }
+.graph-canvas svg { width: 100%; height: 100%; display: block; }
+
+.graph-side {
+  border-left: 1px solid var(--line);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  background: rgba(255,252,242,.5);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+.legend-dot.doc { background: var(--olive); box-shadow: 0 0 0 3px rgba(92,107,46,.15); }
+.legend-dot.chunk { background: var(--sage); }
+.legend-dot.entity { background: var(--brass); box-shadow: 0 0 0 3px rgba(155,122,46,.15); }
+.legend-dot.note { background: var(--rust); }
+.legend-dot.proj {
+  background: transparent;
+  border: 2px solid var(--olive-deep);
+}
+
+.graph-meta {
+  margin-top: auto;
+  padding-top: 22px;
+  border-top: 1px dashed var(--line);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.metric .v {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 38px;
+  color: var(--parchment);
+  line-height: 1;
+  font-variation-settings: "opsz" 60, "SOFT" 80;
+}
+.metric .v sub {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 11px;
+  color: var(--olive);
+  margin-left: 6px;
+  letter-spacing: .08em;
+}
+.metric .l {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  margin-top: 6px;
+}
+
+/* Graph nodes/edges */
+.gnode { transition: transform .4s ease; }
+.gnode circle { transition: r .3s ease, fill .3s ease; cursor: pointer; }
+.gnode:hover circle { r: 12; }
+.gnode text {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  fill: var(--ink-muted);
+}
+.gedge {
+  stroke: rgba(92,107,46,.32);
+  stroke-width: 1;
+  fill: none;
+}
+.gedge.dashed { stroke-dasharray: 3 4; stroke: rgba(155,122,46,.4); }
+.pulse-circle { animation: gpulse 3s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes gpulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+
+/* ------------ Provider rail ------------ */
+.providers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.provider {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 22px;
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  transition: border-color .3s ease, box-shadow .3s ease;
+}
+.provider:hover {
+  border-color: var(--olive);
+  box-shadow: 0 6px 18px -10px rgba(61,72,29,.3);
+}
+.provider .pname {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--parchment);
+  letter-spacing: -.01em;
+}
+.provider .pname em { font-style: italic; color: var(--olive); font-weight: 300; }
+.provider .pmodels {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.provider .pflag {
+  position: absolute;
+  top: 18px; right: 18px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-faded);
+  background: var(--surface);
+}
+.provider.local .pflag { color: var(--olive); border-color: var(--olive); }
+.provider.cloud .pflag { color: var(--brass); border-color: var(--brass); }
+
+/* ------------ Roadmap ------------ */
+.roadmap {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--card);
+}
+.phase {
+  padding: 32px 26px 36px;
+  border-right: 1px solid var(--line-soft);
+  background: var(--card);
+  position: relative;
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  transition: background .35s ease;
+}
+.phase:last-child { border-right: none; }
+.phase:hover { background: var(--surface-2); }
+.phase::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; height: 3px; width: 100%;
+  background: linear-gradient(90deg, var(--olive-deep), var(--sage));
+  opacity: .35;
+  transition: opacity .35s ease;
+}
+.phase:hover::before { opacity: 1; }
+.phase .pn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--olive);
+  margin-bottom: 12px;
+}
+.phase .ph {
+  font-family: var(--display);
+  font-weight: 300;
+  font-style: italic;
+  font-size: 30px;
+  color: var(--parchment);
+  line-height: 1;
+  margin-bottom: 8px;
+  font-variation-settings: "opsz" 48, "SOFT" 100;
+}
+.phase .pw {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faded);
+  letter-spacing: .08em;
+  margin-bottom: 22px;
+}
+.phase ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.phase li {
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.45;
+  padding-left: 18px;
+  position: relative;
+}
+.phase li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: .55em;
+  width: 8px; height: 1px;
+  background: var(--olive);
+}
+
+/* ------------ Quote / closing ------------ */
+.closing {
+  text-align: center;
+  padding: 140px 32px 80px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.closing .mark {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 80px;
+  color: var(--olive);
+  line-height: 1;
+  margin-bottom: 24px;
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+}
+.closing p {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.3;
+  color: var(--parchment);
+  letter-spacing: -.012em;
+  font-variation-settings: "opsz" 72, "SOFT" 40;
+}
+.closing p em { font-style: italic; color: var(--olive); }
+.closing .sig {
+  margin-top: 60px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+.closing .sig::before, .closing .sig::after {
+  content: "";
+  width: 60px; height: 1px;
+  background: var(--line);
+}
+
+/* ------------ Footer ------------ */
+footer {
+  border-top: 1px solid var(--line);
+  padding: 28px 32px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  display: flex;
+  justify-content: space-between;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+
+/* ------------ Reveal animations ------------ */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1);
+  transition-delay: var(--d, 0ms);
+}
+[data-reveal].in { opacity: 1; transform: none; }
+
+/* ------------ Responsive ------------ */
+@media (max-width: 1100px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .lede { margin-left: 0; max-width: 100%; }
+  .section-head { grid-template-columns: 1fr; gap: 18px; }
+  .pillars { grid-template-columns: 1fr; }
+  .caps { grid-template-columns: 1fr; }
+  .arch-row.r-3 { grid-template-columns: 1fr; }
+  .arch-row.r-2 { grid-template-columns: 1fr; }
+  .arch-row.r-3-data { grid-template-columns: 1fr; }
+  .providers { grid-template-columns: repeat(2, 1fr); }
+  .roadmap { grid-template-columns: 1fr; }
+  .phase { border-right: none; border-bottom: 1px solid var(--line-soft); min-height: auto; }
+  .phase::before { width: 3px; height: 100%; }
+  .graph-frame { grid-template-columns: 1fr; height: auto; }
+  .graph-canvas { height: 380px; }
+  .graph-side { border-left: none; border-top: 1px solid var(--line); }
+}
+@media (max-width: 640px) {
+  .providers { grid-template-columns: 1fr; }
+  .hero { padding: 60px 24px 70px; }
+  .section { padding: 70px 24px; }
+  .closing .mark { font-size: 56px; }
+}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="bar-inner">
+    <span style="display:flex;gap:18px;align-items:center;">
+      <span style="color:var(--parchment);font-weight:500;">ATLAS</span>
+      <span style="color:var(--ink-faded);">/</span>
+      <span>Vision Document</span>
+    </span>
+    <div class="bar-mono">
+      <span><i class="dot"></i> v0.2 · Draft</span>
+      <span>April 2026</span>
+      <span style="color:var(--olive);">M. Reda</span>
+    </div>
+  </div>
+</div>
+
+<header class="hero">
+  <!-- Topographic decoration -->
+  <svg class="topo" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <radialGradient id="topo-fade" cx="80%" cy="20%" r="80%">
+        <stop offset="0%" stop-color="#5C6B2E" stop-opacity=".55"/>
+        <stop offset="60%" stop-color="#5C6B2E" stop-opacity=".10"/>
+        <stop offset="100%" stop-color="#5C6B2E" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <g fill="none" stroke="url(#topo-fade)" stroke-width=".7">
+      <path d="M -50 540 Q 250 460, 480 510 T 920 460 T 1300 480"/>
+      <path d="M -50 500 Q 270 410, 510 470 T 940 420 T 1300 440"/>
+      <path d="M -50 460 Q 290 360, 540 430 T 960 380 T 1300 400"/>
+      <path d="M -50 420 Q 310 320, 560 390 T 980 350 T 1300 360"/>
+      <path d="M -50 380 Q 330 290, 580 350 T 990 320 T 1300 320"/>
+      <path d="M -50 340 Q 350 260, 600 320 T 1000 290 T 1300 280"/>
+      <path d="M -50 300 Q 360 240, 620 290 T 1010 260 T 1300 240"/>
+      <path d="M -50 260 Q 370 220, 640 260 T 1020 230 T 1300 200"/>
+      <path d="M -50 220 Q 380 200, 660 230 T 1030 200 T 1300 160"/>
+      <path d="M -50 180 Q 390 180, 680 200 T 1040 170 T 1300 120"/>
+    </g>
+  </svg>
+
+  <div class="hero-grid">
+    <div>
+      <div class="eyebrow" data-reveal style="--d:0ms">A — T — L — A — S · System Design 0.2</div>
+      <h1 class="title" data-reveal style="--d:120ms">
+        Adaptive<br/>
+        Task <span class="ampersand">&amp;</span> <em>Learning</em><br/>
+        Assistant.
+      </h1>
+      <div class="expand" data-reveal style="--d:280ms">
+        <span><b>A</b>daptive</span>
+        <span><b>T</b>ask &amp;</span>
+        <span><b>L</b>earning</span>
+        <span><b>A</b>ssistant</span>
+        <span><b>S</b>ystem</span>
+      </div>
+    </div>
+
+    <div data-reveal style="--d:380ms">
+      <p class="lede">
+        A self-hosted, AI-native operating system for a consulting practice — a graph-structured memory, a multi-model routing layer, and a voice-first interface, drawn into one cartography of work.
+        <small>— Vision · April 2026</small>
+      </p>
+    </div>
+  </div>
+</header>
+
+<!-- ============== Manifesto ============== -->
+<section class="manifesto" data-reveal>
+  <p>
+    Generic AI chat treats every question as if it begins from nothing. ATLAS begins from <em>everywhere you've already been</em> — every PDF, repo, email, alert, and prior decision — and routes the right model to the right task, <span class="brass">privately, by default</span>.
+  </p>
+</section>
+
+<!-- ============== Design Principles ============== -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-marker">
+      <span>§ 01</span>
+      <b>Design&nbsp;Principles</b>
+    </div>
+    <h2 class="section-title">Six commitments that <em>shape every choice</em>.</h2>
+  </div>
+
+  <div class="pillars">
+    <div class="pillar" data-reveal>
+      <div class="num">P · 01</div>
+      <h3>Model <em>Agnosticism</em></h3>
+      <p>Local Gemma to cloud Claude — a single async streaming interface routes by cost, capability, and privacy without rewriting prompts.</p>
+    </div>
+    <div class="pillar" data-reveal style="--d:80ms">
+      <div class="num">P · 02</div>
+      <h3>Knowledge <em>as Graph</em></h3>
+      <p>Documents, chunks, entities, and projects are nodes. Retrieval is a personalized random walk — context, not just similarity.</p>
+    </div>
+    <div class="pillar" data-reveal style="--d:160ms">
+      <div class="num">P · 03</div>
+      <h3>Streaming <em>First</em></h3>
+      <p>Tokens land in the UI as they arrive. WebSockets, async generators, and interruptible voice loops — never wait for completions.</p>
+    </div>
+    <div class="pillar" data-reveal style="--d:240ms">
+      <div class="num">P · 04</div>
+      <h3>Plugin-<em>Oriented</em></h3>
+      <p>Gmail, GitHub, GCP, Calendar — every integration is a uniform tool the agent can invoke, with schemas auto-derived from Pydantic.</p>
+    </div>
+    <div class="pillar" data-reveal style="--d:320ms">
+      <div class="num">P · 05</div>
+      <h3>Privacy <em>by Default</em></h3>
+      <p>Sensitive projects are local-only. Cloud LLM calls are explicit, opt-in, and audited per turn — never the silent default.</p>
+    </div>
+    <div class="pillar" data-reveal style="--d:400ms">
+      <div class="num">P · 06</div>
+      <h3>Async <em>Everything</em></h3>
+      <p>Embeddings, retrieval, tool calls, ingestion — every I/O path is non-blocking. The system breathes while it thinks.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Architecture ============== -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-marker">
+      <span>§ 02</span>
+      <b>Architecture</b>
+    </div>
+    <h2 class="section-title">A composed stack — <em>FastAPI gateway, three core libraries, three stores</em>.</h2>
+  </div>
+
+  <div class="arch" data-reveal>
+    <div class="arch-grid">
+      <div class="arch-row r-2">
+        <div class="box">
+          <div class="tag">Surface · 01</div>
+          <h4>React Frontend</h4>
+          <p>Dashboard · Streaming chat · Voice · Knowledge graph explorer</p>
+        </div>
+        <div class="box">
+          <div class="tag">Surface · 02</div>
+          <h4>Discord Bot</h4>
+          <p>Slash commands · Daily digest · Alerts via internal REST</p>
+        </div>
+      </div>
+
+      <div class="arch-divider">HTTP · WebSocket · SSE</div>
+
+      <div class="arch-row r-1">
+        <div class="box gateway">
+          <div class="tag">Gateway</div>
+          <h4>FastAPI · async streaming</h4>
+          <p>/chat · /ws · /projects · /knowledge · /plugins · /audio · /admin</p>
+        </div>
+      </div>
+
+      <div class="arch-divider">Internal Python packages</div>
+
+      <div class="arch-row r-3">
+        <div class="box">
+          <div class="tag">atlas-core</div>
+          <h4>Agent &amp; Router</h4>
+          <p>ReAct loop · Model router · Tool runner · LangGraph orchestration</p>
+        </div>
+        <div class="box">
+          <div class="tag">atlas-knowledge</div>
+          <h4>Graph RAG</h4>
+          <p>Ingestion · AST code parser · Hybrid retrieval · Personalized PageRank</p>
+        </div>
+        <div class="box">
+          <div class="tag">atlas-plugins</div>
+          <h4>Plugin Registry</h4>
+          <p>Gmail · GitHub · GCP · Calendar · Notion · Web · Code execution</p>
+        </div>
+      </div>
+
+      <div class="arch-divider">Data &amp; model layer</div>
+
+      <div class="arch-row r-3-data">
+        <div class="box">
+          <div class="tag">Graph</div>
+          <h4>Neo4j / Kuzu</h4>
+          <p>Nodes · Edges · Cypher traversal</p>
+        </div>
+        <div class="box">
+          <div class="tag">Vector</div>
+          <h4>Qdrant / Chroma</h4>
+          <p>Embeddings · ANN · Filtered search</p>
+        </div>
+        <div class="box">
+          <div class="tag">Relational</div>
+          <h4>PostgreSQL · Redis</h4>
+          <p>Projects · Sessions · Token usage · Cache</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Knowledge Graph showcase ============== -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-marker">
+      <span>§ 03</span>
+      <b>Knowledge&nbsp;Graph</b>
+    </div>
+    <h2 class="section-title">Retrieval <em>as cartography</em> — not similarity, but neighborhood.</h2>
+  </div>
+
+  <div class="graph-frame" data-reveal>
+    <div class="graph-canvas">
+      <svg viewBox="0 0 800 540" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <radialGradient id="proj-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#5C6B2E" stop-opacity=".30"/>
+            <stop offset="100%" stop-color="#5C6B2E" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <!-- edges -->
+        <g>
+          <path class="gedge" d="M 400 270 L 240 160"/>
+          <path class="gedge" d="M 400 270 L 560 150"/>
+          <path class="gedge" d="M 400 270 L 600 320"/>
+          <path class="gedge" d="M 400 270 L 230 380"/>
+          <path class="gedge" d="M 400 270 L 410 430"/>
+          <path class="gedge" d="M 400 270 L 130 270"/>
+          <path class="gedge" d="M 400 270 L 670 230"/>
+
+          <path class="gedge" d="M 240 160 L 130 270"/>
+          <path class="gedge" d="M 560 150 L 670 230"/>
+          <path class="gedge" d="M 230 380 L 130 270"/>
+          <path class="gedge" d="M 230 380 L 410 430"/>
+          <path class="gedge" d="M 600 320 L 670 230"/>
+          <path class="gedge" d="M 600 320 L 410 430"/>
+
+          <path class="gedge dashed" d="M 240 160 L 560 150"/>
+          <path class="gedge dashed" d="M 130 270 L 670 230"/>
+          <path class="gedge dashed" d="M 240 160 L 410 430"/>
+
+          <!-- chunk satellites -->
+          <path class="gedge" d="M 240 160 L 170 100"/>
+          <path class="gedge" d="M 240 160 L 320 90"/>
+          <path class="gedge" d="M 560 150 L 510 80"/>
+          <path class="gedge" d="M 560 150 L 640 90"/>
+          <path class="gedge" d="M 600 320 L 720 360"/>
+          <path class="gedge" d="M 600 320 L 690 410"/>
+          <path class="gedge" d="M 410 430 L 340 490"/>
+          <path class="gedge" d="M 410 430 L 480 490"/>
+          <path class="gedge" d="M 230 380 L 150 440"/>
+          <path class="gedge" d="M 230 380 L 290 470"/>
+          <path class="gedge" d="M 130 270 L 60 220"/>
+          <path class="gedge" d="M 130 270 L 60 320"/>
+          <path class="gedge" d="M 670 230 L 750 180"/>
+          <path class="gedge" d="M 670 230 L 750 280"/>
+        </g>
+
+        <!-- Project center -->
+        <g class="gnode pulse-circle" transform="translate(400 270)">
+          <circle r="26" fill="url(#proj-glow)"/>
+          <circle r="10" fill="none" stroke="#3D481D" stroke-width="1.6"/>
+          <text x="0" y="-22" text-anchor="middle" fill="#3D481D" style="letter-spacing:.18em">project</text>
+        </g>
+
+        <!-- Documents -->
+        <g class="gnode" transform="translate(240 160)">
+          <circle r="9" fill="#5C6B2E"/>
+          <text x="0" y="-16" text-anchor="middle">document</text>
+        </g>
+        <g class="gnode" transform="translate(560 150)">
+          <circle r="9" fill="#5C6B2E"/>
+          <text x="0" y="-16" text-anchor="middle">document</text>
+        </g>
+        <g class="gnode" transform="translate(130 270)">
+          <circle r="9" fill="#5C6B2E"/>
+          <text x="0" y="-16" text-anchor="middle">document</text>
+        </g>
+        <g class="gnode" transform="translate(670 230)">
+          <circle r="9" fill="#5C6B2E"/>
+          <text x="0" y="-16" text-anchor="middle">document</text>
+        </g>
+
+        <!-- Entities (brass) -->
+        <g class="gnode pulse-circle" style="animation-delay:.4s" transform="translate(600 320)">
+          <circle r="8" fill="#9B7A2E"/>
+          <text x="0" y="-16" text-anchor="middle">entity</text>
+        </g>
+        <g class="gnode pulse-circle" style="animation-delay:.9s" transform="translate(230 380)">
+          <circle r="8" fill="#9B7A2E"/>
+          <text x="0" y="-16" text-anchor="middle">entity</text>
+        </g>
+
+        <!-- Note -->
+        <g class="gnode" transform="translate(410 430)">
+          <circle r="7" fill="#A0552B"/>
+          <text x="0" y="-14" text-anchor="middle">note</text>
+        </g>
+
+        <!-- Chunks (sage, smaller) -->
+        <g fill="#8A9A55">
+          <circle cx="170" cy="100" r="4"/>
+          <circle cx="320" cy="90" r="4"/>
+          <circle cx="510" cy="80" r="4"/>
+          <circle cx="640" cy="90" r="4"/>
+          <circle cx="720" cy="360" r="4"/>
+          <circle cx="690" cy="410" r="4"/>
+          <circle cx="340" cy="490" r="4"/>
+          <circle cx="480" cy="490" r="4"/>
+          <circle cx="150" cy="440" r="4"/>
+          <circle cx="290" cy="470" r="4"/>
+          <circle cx="60" cy="220" r="4"/>
+          <circle cx="60" cy="320" r="4"/>
+          <circle cx="750" cy="180" r="4"/>
+          <circle cx="750" cy="280" r="4"/>
+        </g>
+      </svg>
+    </div>
+
+    <aside class="graph-side">
+      <div class="legend-item"><i class="legend-dot proj"></i> Project — anchor</div>
+      <div class="legend-item"><i class="legend-dot doc"></i> Document</div>
+      <div class="legend-item"><i class="legend-dot chunk"></i> Chunk</div>
+      <div class="legend-item"><i class="legend-dot entity"></i> Entity · person · concept</div>
+      <div class="legend-item"><i class="legend-dot note"></i> Note · web clip</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--ink-faded);letter-spacing:.1em;line-height:1.6;border-left:1px solid var(--line);padding-left:12px;">
+        ── solid: BELONGS_TO · REFERENCES<br/>
+        ── dashed: SEMANTICALLY_NEAR · LINKED_TO
+      </div>
+
+      <div class="graph-meta">
+        <div class="metric">
+          <div class="v">3<sub>STG</sub></div>
+          <div class="l">Stage Hybrid</div>
+        </div>
+        <div class="metric">
+          <div class="v">.85</div>
+          <div class="l">Damping · d</div>
+        </div>
+        <div class="metric">
+          <div class="v">k=8</div>
+          <div class="l">Top-K Context</div>
+        </div>
+        <div class="metric">
+          <div class="v">512<sub>TOK</sub></div>
+          <div class="l">Chunk · 128 overlap</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============== Capabilities ============== -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-marker">
+      <span>§ 04</span>
+      <b>Capabilities</b>
+    </div>
+    <h2 class="section-title">What ATLAS does for the practice <em>that nothing else does together</em>.</h2>
+  </div>
+
+  <div class="caps">
+    <div class="cap" data-reveal><span class="idx">i</span><div><h4>Multi-project workspace</h4><p>Each engagement has its own RAG scope, model preferences, plugin set, and privacy posture. No bleed between clients.</p></div></div>
+    <div class="cap" data-reveal style="--d:60ms"><span class="idx">ii</span><div><h4>Graph RAG retrieval</h4><p>BM25 + vector seed → graph expansion → cross-encoder rerank. Retrieves neighborhoods, not just nearest neighbors.</p></div></div>
+    <div class="cap" data-reveal style="--d:120ms"><span class="idx">iii</span><div><h4>Multi-model routing</h4><p>Local Gemma for fast lookups, Claude for code review, Gemini for long-context — selected per request, audited per dollar.</p></div></div>
+    <div class="cap" data-reveal style="--d:180ms"><span class="idx">iv</span><div><h4>Voice-first agent</h4><p>Wake-word in the browser, faster-whisper STT, Kokoro TTS, interruptible mid-stream — a real assistant, not a transcript box.</p></div></div>
+    <div class="cap" data-reveal style="--d:240ms"><span class="idx">v</span><div><h4>Code intelligence</h4><p>AST-parsed Python, Jupyter cells with markdown context, cross-repo pattern clustering — every prior repo is a knowledge source.</p></div></div>
+    <div class="cap" data-reveal style="--d:300ms"><span class="idx">vi</span><div><h4>Plugin tool surface</h4><p>Gmail, GitHub, GCP, Calendar, Notion, Web — uniform tool schemas any model can invoke, with confirmation gates on send.</p></div></div>
+    <div class="cap" data-reveal style="--d:360ms"><span class="idx">vii</span><div><h4>Sandboxed execution</h4><p>The agent writes Python, runs it in an isolated sandbox, reads dataframes and plots back into the conversation.</p></div></div>
+    <div class="cap" data-reveal style="--d:420ms"><span class="idx">viii</span><div><h4>Discord co-presence</h4><p>Slash commands, daily digests, GCP alert routing — ATLAS available wherever the work already happens.</p></div></div>
+  </div>
+</section>
+
+<!-- ============== Providers ============== -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-marker">
+      <span>§ 05</span>
+      <b>Model&nbsp;Layer</b>
+    </div>
+    <h2 class="section-title">One streaming interface — <em>four providers, one router</em>.</h2>
+  </div>
+
+  <div class="providers">
+    <div class="provider local" data-reveal>
+      <div class="pflag">local</div>
+      <div class="pname">LM <em>Studio</em></div>
+      <div class="pmodels">Gemma 4 · Mistral · Llama 3.3 · Qwen 2.5<br/>OpenAI-compatible · localhost:1234</div>
+    </div>
+    <div class="provider cloud" data-reveal style="--d:80ms">
+      <div class="pflag">cloud</div>
+      <div class="pname"><em>Anthropic</em></div>
+      <div class="pmodels">Claude Sonnet 4 · Opus 4<br/>Default · code review · long reasoning</div>
+    </div>
+    <div class="provider cloud" data-reveal style="--d:160ms">
+      <div class="pflag">cloud</div>
+      <div class="pname"><em>OpenAI</em></div>
+      <div class="pmodels">GPT-4o · 4o-mini · o3<br/>Embeddings · text-embedding-3-large</div>
+    </div>
+    <div class="provider cloud" data-reveal style="--d:240ms">
+      <div class="pflag">cloud</div>
+      <div class="pname"><em>Google</em></div>
+      <div class="pmodels">Gemini 2.5 Pro · Flash<br/>Long-context document synthesis</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Roadmap ============== -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-marker">
+      <span>§ 06</span>
+      <b>Roadmap</b>
+    </div>
+    <h2 class="section-title">Five phases, twenty weeks — <em>foundation to fluency</em>.</h2>
+  </div>
+
+  <div class="roadmap" data-reveal>
+    <div class="phase">
+      <div class="pn">Phase · 01</div>
+      <div class="ph">Foundation</div>
+      <div class="pw">Weeks 1 — 4</div>
+      <ul>
+        <li>FastAPI skeleton with WebSocket streaming</li>
+        <li>LLM provider abstraction · OpenAI · Anthropic · LM Studio</li>
+        <li>Postgres + Redis · auth · sessions</li>
+        <li>React shell · chat panel · project sidebar</li>
+        <li>Vector RAG via ChromaDB</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="pn">Phase · 02</div>
+      <div class="ph">Knowledge Graph</div>
+      <div class="pw">Weeks 5 — 8</div>
+      <ul>
+        <li>PDF + URL ingestion pipeline</li>
+        <li>Neo4j schema · graph builder</li>
+        <li>Hybrid BM25 + vector + graph retrieval</li>
+        <li>Cytoscape knowledge explorer</li>
+        <li>Inline note editor with linking</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="pn">Phase · 03</div>
+      <div class="ph">Plugins</div>
+      <div class="pw">Weeks 9 — 12</div>
+      <ul>
+        <li>Plugin registry · base class</li>
+        <li>Gmail · OAuth · core tools</li>
+        <li>GitHub · code intelligence · AST parser</li>
+        <li>GCP · metrics · logs · alerts</li>
+        <li>Plugin management UI</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="pn">Phase · 04</div>
+      <div class="ph">Voice &amp; Depth</div>
+      <div class="pw">Weeks 13 — 16</div>
+      <ul>
+        <li>faster-whisper STT integration</li>
+        <li>Kokoro local TTS pipeline</li>
+        <li>Browser wake-word · Porcupine</li>
+        <li>Personalized PageRank scoring</li>
+        <li>Cost &amp; usage dashboard</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="pn">Phase · 05</div>
+      <div class="ph">Reach</div>
+      <div class="pw">Weeks 17 — 20</div>
+      <ul>
+        <li>Discord bot · slash commands</li>
+        <li>Notification routing · daily digest</li>
+        <li>Gemini provider</li>
+        <li>Code execution sandbox</li>
+        <li>Production GCP deployment · Terraform</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Closing ============== -->
+<section class="closing">
+  <div class="mark">§</div>
+  <p data-reveal>
+    The map is not the territory — but a good atlas <em>changes how you move through it</em>. ATLAS is the working surface for a practice that takes its own knowledge seriously.
+  </p>
+  <div class="sig" data-reveal style="--d:200ms">M · Reda &nbsp;·&nbsp; April 2026 &nbsp;·&nbsp; v0.2 Draft</div>
+</section>
+
+<footer>
+  <span>ATLAS · Adaptive Task &amp; Learning Assistant System</span>
+  <span>Self-Hosted · Pydantic-First · Async-Native</span>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: .12, rootMargin: '0px 0px -60px 0px' });
+  document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+</script>
+
+</body>
+</html>
