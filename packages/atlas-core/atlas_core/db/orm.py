@@ -6,8 +6,9 @@ Each table in the spec maps to one ORM class here. Plan 2 ships
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Index, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy import TIMESTAMP, Index, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -32,14 +33,14 @@ class ProjectORM(Base):
         Text, nullable=False, server_default="cloud_ok"
     )
     default_model: Mapped[str] = mapped_column(Text, nullable=False)
-    enabled_plugins: Mapped[list] = mapped_column(
+    enabled_plugins: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default="[]"
     )
     created_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        nullable=False, server_default=func.now()
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
