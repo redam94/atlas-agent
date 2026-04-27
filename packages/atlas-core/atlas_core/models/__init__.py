@@ -6,6 +6,15 @@ from atlas_core.models.base import (
     MutableAtlasModel,
     TimestampedModel,
 )
+from atlas_core.models.llm import (
+    ModelEvent,
+    ModelEventType,
+    ModelSpec,
+    ModelUsage,
+    ToolCall,
+    ToolResult,
+    ToolSchema,
+)
 from atlas_core.models.messages import (
     ChatRequest,
     Message,
@@ -31,6 +40,10 @@ __all__ = [
     "ChatRequest",
     "Message",
     "MessageRole",
+    "ModelEvent",
+    "ModelEventType",
+    "ModelSpec",
+    "ModelUsage",
     "MutableAtlasModel",
     "PrivacyLevel",
     "Project",
@@ -42,4 +55,7 @@ __all__ = [
     "StreamEvent",
     "StreamEventType",
     "TimestampedModel",
+    "ToolCall",
+    "ToolResult",
+    "ToolSchema",
 ]
