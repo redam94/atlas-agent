@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 
 from atlas_core.config import AtlasConfig
 from atlas_core.db.session import session_scope
+from atlas_core.providers.registry import ModelRegistry, ModelRouter
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,3 +28,11 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     """
     async with session_scope(request.app.state.session_factory) as session:
         yield session
+
+
+def get_model_registry(request: Request) -> ModelRegistry:
+    return request.app.state.model_registry
+
+
+def get_model_router(request: Request) -> ModelRouter:
+    return request.app.state.model_router
