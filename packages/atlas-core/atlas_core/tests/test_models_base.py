@@ -7,7 +7,12 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from atlas_core.models.base import AtlasModel, MutableAtlasModel, TimestampedModel
+from atlas_core.models.base import (
+    AtlasModel,
+    AtlasRequestModel,
+    MutableAtlasModel,
+    TimestampedModel,
+)
 
 
 class _Sample(AtlasModel):
@@ -91,3 +96,43 @@ def test_mutable_atlas_model_is_subclass_of_atlas_model():
     """Inheritance contract: isinstance(MutableAtlasModel(), AtlasModel) is True."""
     instance = _MutableSample(value=1)
     assert isinstance(instance, AtlasModel)
+
+
+class _RequestSample(AtlasRequestModel):
+    name: str
+    status: _Status
+
+
+def test_atlas_request_model_coerces_string_to_enum():
+    """AtlasRequestModel accepts string values for enum fields (FastAPI path)."""
+    instance = _RequestSample.model_validate({"name": "x", "status": "active"})
+    assert instance.status is _Status.ACTIVE
+
+
+def test_atlas_request_model_is_frozen():
+    instance = _RequestSample(name="x", status=_Status.ACTIVE)
+    with pytest.raises(ValidationError):
+        instance.name = "y"
+
+
+def test_atlas_request_model_via_fastapi_post():
+    """Round-trip through FastAPI proves AtlasRequestModel + StrEnum works on real requests."""
+    import asyncio
+
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    app = FastAPI()
+
+    @app.post("/test")
+    async def endpoint(payload: _RequestSample) -> dict:
+        return {"name": payload.name, "status": payload.status.value}
+
+    async def run() -> tuple[int, dict]:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            r = await c.post("/test", json={"name": "x", "status": "active"})
+            return r.status_code, r.json()
+
+    status_code, body = asyncio.run(run())
+    assert status_code == 200
+    assert body == {"name": "x", "status": "active"}

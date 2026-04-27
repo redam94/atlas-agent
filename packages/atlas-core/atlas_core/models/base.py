@@ -40,6 +40,25 @@ class MutableAtlasModel(AtlasModel):
     )
 
 
+class AtlasRequestModel(BaseModel):
+    """Base for HTTP request bodies and JSON-inbound models.
+
+    Lenient (no ``strict=True``): allows Pydantic's standard coercion
+    (e.g. JSON string ``"local_only"`` → ``PrivacyLevel.LOCAL_ONLY``) so
+    that FastAPI can deserialize request bodies. Still ``frozen=True`` so
+    parsed DTOs are immutable.
+
+    Use ``AtlasModel`` for internal value objects where strict type
+    identity matters; use ``AtlasRequestModel`` for anything that arrives
+    over HTTP / JSON.
+    """
+
+    model_config = ConfigDict(
+        frozen=True,
+        populate_by_name=True,
+    )
+
+
 class TimestampedModel(AtlasModel):
     """Frozen entity with an auto-generated id and timestamps."""
 
