@@ -5,7 +5,7 @@ Centralizes the explicit-enum-construction pattern that satisfies
 come from the DB as plain strings.
 """
 
-from atlas_core.db.orm import MessageORM, ProjectORM, SessionORM
+from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, MessageORM, ProjectORM, SessionORM
 from atlas_core.models.messages import Message
 from atlas_core.models.projects import (
     PrivacyLevel,
@@ -56,4 +56,44 @@ def message_from_orm(row: MessageORM) -> Message:
         model=row.model,
         token_count=row.token_count,
         created_at=row.created_at,
+    )
+
+
+def knowledge_node_from_orm(row: KnowledgeNodeORM):
+    """Convert KnowledgeNodeORM → KnowledgeNode (Pydantic).
+
+    Imports are local to avoid making atlas-core depend on atlas-knowledge
+    at module-import time.
+    """
+    from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
+    return KnowledgeNode(
+        id=row.id,
+        user_id=row.user_id,
+        project_id=row.project_id,
+        type=KnowledgeNodeType(row.type),
+        parent_id=row.parent_id,
+        title=row.title,
+        text=row.text,
+        metadata=dict(row.metadata_ or {}),
+        embedding_id=row.embedding_id,
+        created_at=row.created_at,
+    )
+
+
+def ingestion_job_from_orm(row: IngestionJobORM):
+    """Convert IngestionJobORM → IngestionJob (Pydantic)."""
+    from uuid import UUID
+
+    from atlas_knowledge.models.ingestion import IngestionJob, IngestionStatus, SourceType
+    return IngestionJob(
+        id=row.id,
+        user_id=row.user_id,
+        project_id=row.project_id,
+        source_type=SourceType(row.source_type),
+        source_filename=row.source_filename,
+        status=IngestionStatus(row.status),
+        node_ids=[UUID(s) for s in (row.node_ids or [])],
+        error=row.error,
+        created_at=row.created_at,
+        completed_at=row.completed_at,
     )
