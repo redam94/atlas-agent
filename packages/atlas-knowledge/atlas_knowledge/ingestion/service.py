@@ -60,6 +60,8 @@ class IngestionService:
 
         try:
             # 1. Persist the document node.
+            doc_row: KnowledgeNodeORM | None = None
+            chunk_rows: list[KnowledgeNodeORM] = []
             doc_row = KnowledgeNodeORM(
                 user_id=user_id,
                 project_id=project_id,
@@ -82,7 +84,6 @@ class IngestionService:
                 return job.id
 
             # 3. Persist chunk rows (so they get IDs we can use for the vector store).
-            chunk_rows: list[KnowledgeNodeORM] = []
             for raw in raw_chunks:
                 row = KnowledgeNodeORM(
                     id=uuid4(),
@@ -131,6 +132,13 @@ class IngestionService:
 
         except Exception as e:
             log.exception("ingest.failed", job_id=str(job.id))
+            # Roll back partial doc + chunk rows so the DB doesn't contain orphans
+            # (chunks without embeddings) on failure. The job row stays so the
+            # caller can see what happened.
+            for row in chunk_rows:
+                await db.delete(row)
+            if doc_row is not None:
+                await db.delete(doc_row)
             job.status = "failed"
             job.error = str(e)
             job.completed_at = datetime.now(UTC)

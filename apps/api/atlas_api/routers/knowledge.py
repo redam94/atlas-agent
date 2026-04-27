@@ -69,7 +69,8 @@ async def ingest_endpoint(
         source_filename=payload.source_filename,
     )
     job_row = await db.get(IngestionJobORM, job_id)
-    assert job_row is not None
+    if job_row is None:
+        raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
 
 
@@ -92,7 +93,8 @@ async def ingest_pdf_endpoint(
         source_filename=file.filename,
     )
     job_row = await db.get(IngestionJobORM, job_id)
-    assert job_row is not None
+    if job_row is None:
+        raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
 
 

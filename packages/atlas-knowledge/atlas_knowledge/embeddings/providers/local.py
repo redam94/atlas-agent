@@ -47,15 +47,14 @@ class SentenceTransformersEmbedder(EmbeddingService):
     ) -> None:
         self.model_id = model_name
         self.batch_size = batch_size
-        self._model_name = model_name
 
     @property
     def dim(self) -> int:
-        return _get_model(self._model_name).get_sentence_embedding_dimension()
+        return _get_model(self.model_id).get_sentence_embedding_dimension()
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         def _encode() -> list[list[float]]:
-            model = _get_model(self._model_name)
+            model = _get_model(self.model_id)
             arr = model.encode(
                 texts,
                 batch_size=self.batch_size,
@@ -70,7 +69,7 @@ class SentenceTransformersEmbedder(EmbeddingService):
         prefixed = QUERY_PREFIX + text
 
         def _encode() -> list[float]:
-            model = _get_model(self._model_name)
+            model = _get_model(self.model_id)
             arr = model.encode(
                 [prefixed],
                 normalize_embeddings=True,
