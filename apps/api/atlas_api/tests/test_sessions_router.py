@@ -1,5 +1,6 @@
 """Tests for GET /api/v1/sessions/{session_id}/messages."""
 
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -24,12 +25,24 @@ async def test_list_messages_returns_in_created_at_order(app_client, db_session)
     db_session.add(session)
     await db_session.flush()
 
-    # Insert in scrambled order; expect chronological response.
-    db_session.add(MessageORM(user_id="matt", session_id=session.id, role="user", content="first"))
+    # Insert in reverse chronological order with explicit created_at values.
+    # The test would pass without ORDER BY only if insertion order matched response order,
+    # which would be false here. This ensures the test exercises ORDER BY.
+    now = datetime.now(timezone.utc)
+    db_session.add(MessageORM(
+        user_id="matt", session_id=session.id, role="user",
+        content="third", created_at=now,
+    ))
     await db_session.flush()
-    db_session.add(MessageORM(user_id="matt", session_id=session.id, role="assistant", content="second"))
+    db_session.add(MessageORM(
+        user_id="matt", session_id=session.id, role="assistant",
+        content="second", created_at=now - timedelta(seconds=1),
+    ))
     await db_session.flush()
-    db_session.add(MessageORM(user_id="matt", session_id=session.id, role="user", content="third"))
+    db_session.add(MessageORM(
+        user_id="matt", session_id=session.id, role="user",
+        content="first", created_at=now - timedelta(seconds=2),
+    ))
     await db_session.flush()
     await db_session.commit()
 

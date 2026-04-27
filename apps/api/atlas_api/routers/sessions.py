@@ -31,6 +31,11 @@ async def list_messages(
     if session_row is None:
         return []
     if session_row.user_id != settings.user_id:
+        # 403 (rather than []) intentionally surfaces "session exists but is not yours"
+        # in Phase 1 single-user mode, where this branch is dead code anyway. In Phase 2
+        # multi-user, this becomes an existence oracle on session UUIDs — at that point,
+        # consider collapsing this branch to `return []` so cross-user probes can't
+        # distinguish "session is real but yours" from "session never existed".
         raise HTTPException(status_code=403, detail="forbidden")
     result = await db.execute(
         select(MessageORM)
