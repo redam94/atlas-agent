@@ -1,12 +1,12 @@
 """Pydantic models for knowledge nodes (documents and chunks)."""
+
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field
-
 from atlas_core.models.base import AtlasModel
+from pydantic import Field
 
 
 class KnowledgeNodeType(StrEnum):
@@ -21,9 +21,9 @@ class KnowledgeNode(AtlasModel):
     user_id: str
     project_id: UUID
     type: KnowledgeNodeType
-    parent_id: UUID | None = None     # set on chunks; references the document
-    title: str | None = None          # populated on documents (filename / heading)
+    parent_id: UUID | None = None  # set on chunks; references the document
+    title: str | None = None  # populated on documents (filename / heading)
     text: str
     metadata: dict[str, Any] = Field(default_factory=dict)
-    embedding_id: str | None = None   # vector store ID for chunks; None for documents
+    embedding_id: str | None = None  # vector store ID for chunks; None for documents
     created_at: datetime

@@ -1,4 +1,5 @@
 """Tests for markdown parser (passthrough with front-matter strip)."""
+
 from atlas_knowledge.parsers.markdown import ParsedDocument, parse_markdown
 
 

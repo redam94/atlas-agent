@@ -1,11 +1,11 @@
 """Ingestion request + job-state shapes."""
+
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import Field, model_validator
-
 from atlas_core.models.base import AtlasModel, AtlasRequestModel
+from pydantic import Field, model_validator
 
 
 class SourceType(StrEnum):

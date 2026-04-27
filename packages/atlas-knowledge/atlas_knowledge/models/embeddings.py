@@ -1,7 +1,7 @@
 """Embedding service request/response shapes."""
-from pydantic import Field
 
 from atlas_core.models.base import AtlasModel
+from pydantic import Field
 
 
 class EmbeddingRequest(AtlasModel):

@@ -1,4 +1,5 @@
 """Tests for the PDF parser using a generated single-page PDF fixture."""
+
 import pytest
 
 from atlas_knowledge.parsers.pdf import parse_pdf
@@ -8,6 +9,7 @@ from atlas_knowledge.parsers.pdf import parse_pdf
 def sample_pdf_bytes() -> bytes:
     """Generate a minimal PDF in-memory with PyMuPDF — no external file needed."""
     import fitz
+
     doc = fitz.open()
     page = doc.new_page()
     page.insert_text((72, 72), "Hello PDF World.\n\nSecond paragraph.")

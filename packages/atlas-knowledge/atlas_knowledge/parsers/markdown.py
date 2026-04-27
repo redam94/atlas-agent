@@ -1,4 +1,5 @@
 """Markdown parser — passthrough with simple title extraction."""
+
 import re
 from dataclasses import dataclass
 

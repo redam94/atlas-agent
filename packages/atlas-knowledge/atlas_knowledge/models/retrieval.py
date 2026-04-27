@@ -1,10 +1,11 @@
 """Retrieval query/result shapes."""
+
 from typing import Any
 from uuid import UUID
 
+from atlas_core.models.base import AtlasModel
 from pydantic import Field
 
-from atlas_core.models.base import AtlasModel
 from atlas_knowledge.models.nodes import KnowledgeNode
 
 
@@ -35,5 +36,5 @@ class RetrievalResult(AtlasModel):
 class RagContext(AtlasModel):
     """Renderable bundle injected into the system prompt (Plan 5 wires this in)."""
 
-    rendered: str                     # the prompt-ready text block
-    citations: list[dict[str, Any]]   # parallel list of metadata for the UI
+    rendered: str  # the prompt-ready text block
+    citations: list[dict[str, Any]]  # parallel list of metadata for the UI

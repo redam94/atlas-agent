@@ -4,6 +4,7 @@ Concrete implementations live in providers/. Phase 1 ships:
 - ``SentenceTransformersEmbedder`` (BGE-small, in-process)
 - ``FakeEmbedder`` (tests)
 """
+
 from abc import ABC, abstractmethod
 
 

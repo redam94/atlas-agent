@@ -13,6 +13,7 @@ Strategy:
 4. Generate ``overlap_tokens`` worth of trailing words from each chunk and
    prepend them to the next.
 """
+
 from dataclasses import dataclass
 
 

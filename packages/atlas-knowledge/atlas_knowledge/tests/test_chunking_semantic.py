@@ -1,4 +1,5 @@
 """Tests for SemanticChunker — paragraph + heading aware splitting."""
+
 from atlas_knowledge.chunking.semantic import SemanticChunker
 
 

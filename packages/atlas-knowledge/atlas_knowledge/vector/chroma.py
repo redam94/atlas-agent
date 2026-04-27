@@ -1,4 +1,5 @@
 """ChromaDB-backed VectorStore (embedded mode)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -118,13 +119,18 @@ class ChromaVectorStore(VectorStore):
                 title=meta.get("title") or None,
                 text=doc,
                 metadata={
-                    k: v for k, v in meta.items()
+                    k: v
+                    for k, v in meta.items()
                     if k not in {"project_id", "user_id", "parent_id", "title", "created_at"}
                 },
                 embedding_id=chunk_id,
                 created_at=_parse_dt(meta.get("created_at")),
             )
-            out.append(ScoredChunk(chunk=chunk, score=1.0 - float(dist), parent_title=meta.get("title") or None))
+            out.append(
+                ScoredChunk(
+                    chunk=chunk, score=1.0 - float(dist), parent_title=meta.get("title") or None
+                )
+            )
         return out
 
 

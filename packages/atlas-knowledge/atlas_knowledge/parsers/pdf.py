@@ -1,4 +1,5 @@
 """PDF parser using PyMuPDF (``fitz``)."""
+
 import fitz
 
 from atlas_knowledge.parsers.markdown import ParsedDocument

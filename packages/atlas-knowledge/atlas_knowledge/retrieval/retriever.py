@@ -1,4 +1,5 @@
 """Retriever — query → embed → vector search → ScoredChunk[]."""
+
 from atlas_knowledge.embeddings.service import EmbeddingService
 from atlas_knowledge.models.retrieval import RetrievalQuery, RetrievalResult
 from atlas_knowledge.vector.store import VectorStore

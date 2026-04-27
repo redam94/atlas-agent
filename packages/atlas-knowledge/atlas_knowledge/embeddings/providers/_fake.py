@@ -4,6 +4,7 @@ NOT semantic; it only guarantees that identical inputs produce identical
 outputs and the dimension is consistent. Useful for unit-testing the
 ingestion pipeline + vector store without downloading BGE-small.
 """
+
 import hashlib
 
 from atlas_knowledge.embeddings.service import EmbeddingService

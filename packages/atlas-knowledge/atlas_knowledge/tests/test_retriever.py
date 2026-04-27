@@ -1,4 +1,5 @@
 """Tests for Retriever using FakeEmbedder + tmp Chroma."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 

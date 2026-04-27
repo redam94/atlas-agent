@@ -1,4 +1,5 @@
 """Tests for atlas_knowledge.models.nodes."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 

@@ -1,10 +1,9 @@
 """Integration test for IngestionService — uses FakeEmbedder + tmp Chroma."""
-from uuid import uuid4
 
 import pytest
+from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from sqlalchemy import select
 
-from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from atlas_knowledge.embeddings import FakeEmbedder
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.parsers.markdown import parse_markdown

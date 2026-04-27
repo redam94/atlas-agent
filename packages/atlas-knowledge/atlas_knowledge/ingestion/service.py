@@ -4,15 +4,16 @@ The contract: caller supplies an already-parsed document. This keeps the service
 agnostic about the source format (markdown text vs PDF bytes); the API layer
 chooses the parser based on content type.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import structlog
+from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM
 from atlas_knowledge.chunking.semantic import SemanticChunker
 from atlas_knowledge.embeddings.service import EmbeddingService
 from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
@@ -41,7 +42,7 @@ class IngestionService:
         user_id: str,
         project_id: UUID,
         parsed: ParsedDocument,
-        source_type: str,             # "markdown" | "pdf"
+        source_type: str,  # "markdown" | "pdf"
         source_filename: str | None,
     ) -> UUID:
         """Run the pipeline. Returns the job_id. Always commits a job row,

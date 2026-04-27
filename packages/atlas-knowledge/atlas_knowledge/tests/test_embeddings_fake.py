@@ -1,4 +1,5 @@
 """Tests for the EmbeddingService ABC + FakeEmbedder used downstream."""
+
 import pytest
 
 from atlas_knowledge.embeddings import EmbeddingService, FakeEmbedder

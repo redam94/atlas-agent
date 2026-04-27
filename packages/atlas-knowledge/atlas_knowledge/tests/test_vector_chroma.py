@@ -1,4 +1,5 @@
 """Tests for ChromaVectorStore — uses tmp_path-backed embedded Chroma."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 

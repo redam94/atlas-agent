@@ -1,4 +1,5 @@
 """Tests for retrieval/ingestion/embedding model shapes."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -96,7 +97,9 @@ def test_source_type_values():
 
 
 def test_ingest_request_markdown_minimal():
-    r = IngestRequest.model_validate({"project_id": str(uuid4()), "source_type": "markdown", "text": "# hello"})
+    r = IngestRequest.model_validate(
+        {"project_id": str(uuid4()), "source_type": "markdown", "text": "# hello"}
+    )
     assert r.source_type is SourceType.MARKDOWN
 
 

@@ -8,6 +8,7 @@ BGE convention: queries get the prefix
 ``"Represent this sentence for searching relevant passages: "`` so
 similarity scores cluster correctly. Documents are embedded as-is.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -30,6 +31,7 @@ def _get_model(model_name: str) -> SentenceTransformer:
         # Imported lazily — only when actually needed, so test runs that
         # never instantiate this class don't pay the import cost (~2s).
         from sentence_transformers import SentenceTransformer
+
         _MODEL_CACHE[model_name] = SentenceTransformer(model_name)
     return _MODEL_CACHE[model_name]
 
