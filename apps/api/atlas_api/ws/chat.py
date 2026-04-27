@@ -24,17 +24,20 @@ from atlas_core.models.sessions import MessageRole
 from atlas_core.prompts.builder import SystemPromptBuilder
 from atlas_core.prompts.registry import prompt_registry
 from atlas_core.providers.registry import ModelRouter
+from atlas_knowledge.models.retrieval import RetrievalQuery
+from atlas_knowledge.retrieval.builder import build_rag_context
+from atlas_knowledge.retrieval.retriever import Retriever
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atlas_api.deps import get_model_router, get_session, get_settings
+from atlas_api.deps import get_model_router, get_retriever, get_session, get_settings
 
 router = APIRouter()
 log = structlog.get_logger("atlas.api.ws")
 prompt_builder = SystemPromptBuilder(prompt_registry)
 
-CONTEXT_WINDOW_TURNS = 20  # Plan 5 will adapt this dynamically
+CONTEXT_WINDOW_TURNS = 20
 
 
 @router.websocket("/ws/{session_id}")
@@ -43,6 +46,7 @@ async def chat_ws(
     session_id: UUID,
     db: AsyncSession = Depends(get_session),
     model_router: ModelRouter = Depends(get_model_router),
+    retriever: Retriever = Depends(get_retriever),
     settings: AtlasConfig = Depends(get_settings),
 ) -> None:
     await websocket.accept()
@@ -83,7 +87,7 @@ async def chat_ws(
 
             try:
                 sequence = await _handle_chat_message(
-                    websocket, session_id, req, db, model_router, settings, sequence
+                    websocket, session_id, req, db, model_router, retriever, settings, sequence
                 )
             except Exception as e:
                 log.exception("ws.unhandled_error")
@@ -103,6 +107,7 @@ async def _handle_chat_message(
     req: ChatRequest,
     db: AsyncSession,
     model_router: ModelRouter,
+    retriever: Retriever,
     settings: AtlasConfig,
     sequence: int,
 ) -> int:
@@ -130,8 +135,32 @@ async def _handle_chat_message(
 
     # 3. Build the message history for the model
     history_rows = await _load_recent_messages(db, session_id, limit=CONTEXT_WINDOW_TURNS)
+
+    # 3b. Optionally retrieve RAG context. Skipped if rag_enabled=false or
+    # if the knowledge base for this project has no relevant chunks.
+    rag_block: str | None = None
+    rag_citations: list[dict] | None = None
+    if req.rag_enabled:
+        rag_result = await retriever.retrieve(
+            RetrievalQuery(
+                project_id=project.id,
+                text=req.text,
+                top_k=req.top_k_context,
+            )
+        )
+        if rag_result.chunks:
+            rag_ctx = build_rag_context(rag_result.chunks)
+            rag_block = rag_ctx.rendered
+            rag_citations = rag_ctx.citations
+            sequence = await _send(
+                websocket,
+                StreamEventType.RAG_CONTEXT,
+                {"citations": rag_citations},
+                sequence,
+            )
+
     system_prompt = prompt_builder.build(_project_to_pydantic(project))
-    model_messages = _assemble_messages(system_prompt, history_rows, req.text)
+    model_messages = _assemble_messages(system_prompt, history_rows, req.text, rag_block=rag_block)
 
     # 4. Persist the user turn before streaming the assistant response
     user_row = MessageORM(
@@ -187,6 +216,7 @@ async def _handle_chat_message(
         session_id=session_id,
         role=MessageRole.ASSISTANT.value,
         content=full_assistant_text,
+        rag_context=rag_citations,
         model=provider.spec.model_id,
         token_count=(usage or {}).get("output_tokens"),
     )
@@ -248,8 +278,14 @@ def _assemble_messages(
     system_prompt: str,
     history: list[MessageORM],
     new_user_text: str,
+    *,
+    rag_block: str | None = None,
 ) -> list[dict]:
     out: list[dict] = [{"role": "system", "content": system_prompt}]
+    if rag_block:
+        # Second system message — keeps the persona prompt (cache-friendly,
+        # stable across turns) separate from the per-turn retrieved context.
+        out.append({"role": "system", "content": rag_block})
     for row in history:
         out.append({"role": row.role, "content": row.content})
     out.append({"role": "user", "content": new_user_text})
