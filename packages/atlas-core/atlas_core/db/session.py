@@ -1,0 +1,42 @@
+"""Async engine and session factory construction.
+
+Pure functions, no global state. The FastAPI app builds these once at
+startup (in `lifespan`) and stashes them on `app.state`.
+"""
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from atlas_core.config import AtlasConfig
+
+
+def _normalize_url(url: str) -> str:
+    """Rewrite postgresql:// → postgresql+asyncpg:// so users don't have to."""
+    parsed = make_url(url)
+    if parsed.drivername == "postgresql":
+        parsed = parsed.set(drivername="postgresql+asyncpg")
+    return str(parsed)
+
+
+def create_engine_from_config(config: AtlasConfig) -> AsyncEngine:
+    """Build an AsyncEngine from `AtlasConfig`. Disposes are the caller's job."""
+    url = _normalize_url(config.db.database_url.get_secret_value())
+    return create_async_engine(
+        url,
+        echo=False,
+        pool_pre_ping=True,  # cheap reconnect-on-stale-connection
+    )
+
+
+def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Build the per-request session factory bound to an engine."""
+    return async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,  # detach instances survive commit (Pydantic-friendly)
+        autoflush=False,
+    )
