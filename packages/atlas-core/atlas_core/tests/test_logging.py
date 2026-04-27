@@ -1,4 +1,5 @@
 """Tests for atlas_core.logging."""
+
 import json
 import logging
 

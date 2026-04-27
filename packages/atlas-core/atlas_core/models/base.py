@@ -6,14 +6,15 @@ All ATLAS data models inherit from one of these bases:
 - ``MutableAtlasModel`` — strict, but mutable. Use for stateful builders / agent state.
 - ``TimestampedModel`` — adds ``id``, ``created_at``, ``updated_at``. Use for entities.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AtlasModel(BaseModel):

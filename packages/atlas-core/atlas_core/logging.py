@@ -4,6 +4,7 @@ Call ``configure_logging(environment, log_level)`` once at application startup.
 Production produces JSON lines suitable for log aggregation; development
 produces human-readable colorized output.
 """
+
 import logging
 import sys
 

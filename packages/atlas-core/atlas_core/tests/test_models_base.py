@@ -1,6 +1,7 @@
 """Tests for atlas_core.models.base."""
+
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 import pytest
@@ -70,7 +71,7 @@ def test_timestamped_model_id_is_unique_per_instance():
     assert a.id != b.id
 
 
-class _Status(str, Enum):
+class _Status(StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
 

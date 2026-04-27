@@ -1,6 +1,7 @@
 """Tests for atlas_core.config."""
+
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from atlas_core.config import AtlasConfig, DatabaseConfig, LLMConfig
 
@@ -15,7 +16,7 @@ def test_llm_config_defaults():
 
 def test_database_config_requires_database_url(monkeypatch):
     monkeypatch.delenv("ATLAS_DB__DATABASE_URL", raising=False)
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         DatabaseConfig()
 
 
@@ -37,5 +38,5 @@ def test_atlas_config_loads_from_env(monkeypatch):
 def test_atlas_config_environment_must_be_known(monkeypatch):
     monkeypatch.setenv("ATLAS_DB__DATABASE_URL", "postgresql://x:y@localhost/z")
     monkeypatch.setenv("ATLAS_ENVIRONMENT", "staging")  # not in literal
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AtlasConfig()

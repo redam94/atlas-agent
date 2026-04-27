@@ -4,6 +4,7 @@ Settings are loaded from environment variables (with optional ``.env`` file)
 using ``pydantic-settings``. Nested groups are supported via the
 ``ATLAS_GROUP__FIELD`` env-var convention.
 """
+
 from typing import Literal
 
 from pydantic import AnyUrl, Field, SecretStr
