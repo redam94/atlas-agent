@@ -18,8 +18,10 @@ def _normalize_url(url: str) -> str:
     """Rewrite postgresql:// → postgresql+asyncpg:// so users don't have to."""
     parsed = make_url(url)
     if parsed.drivername == "postgresql":
+        # Use .render_as_string(hide_password=False) to avoid masking password
         parsed = parsed.set(drivername="postgresql+asyncpg")
-    return str(parsed)
+        return parsed.render_as_string(hide_password=False)
+    return parsed.render_as_string(hide_password=False)
 
 
 def create_engine_from_config(config: AtlasConfig) -> AsyncEngine:
