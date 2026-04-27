@@ -35,8 +35,8 @@ def _text_delta(text: str):
     return ev
 
 
-def _message_stop(input_tokens: int, output_tokens: int):
-    """Emit an event matching anthropic SDK's MessageDeltaEvent / MessageStopEvent shape."""
+def _message_delta(input_tokens: int, output_tokens: int):
+    """Emit an event matching anthropic SDK's MessageDeltaEvent shape (carries usage)."""
     ev = MagicMock()
     ev.type = "message_delta"
     ev.usage = MagicMock()
@@ -58,7 +58,7 @@ async def test_anthropic_provider_streams_tokens_and_emits_done(fake_client):
             [
                 _text_delta("hello"),
                 _text_delta(" world"),
-                _message_stop(input_tokens=12, output_tokens=2),
+                _message_delta(input_tokens=12, output_tokens=2),
             ]
         )
     )
