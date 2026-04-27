@@ -8,7 +8,7 @@ Three model variants:
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from atlas_core.models.base import (
     AtlasRequestModel,
@@ -50,11 +50,34 @@ class ProjectCreate(AtlasRequestModel):
 
 
 class ProjectUpdate(AtlasRequestModel):
-    """PATCH /projects/{id} body. All fields optional; provided fields overwrite."""
+    """PATCH /projects/{id} body. All fields optional; provided fields overwrite.
+
+    Fields that map to NOT NULL columns in the DB cannot be explicitly set
+    to ``null`` — that would produce a 500 at flush time. The
+    ``_reject_explicit_null_on_required_fields`` validator catches this at
+    the API boundary so the response is a 422 instead.
+    """
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, max_length=2000)  # nullable in DB
     status: ProjectStatus | None = None
     privacy_level: PrivacyLevel | None = None
     default_model: str | None = Field(default=None, min_length=1)
     enabled_plugins: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_on_required_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        not_nullable = {
+            "name",
+            "status",
+            "privacy_level",
+            "default_model",
+            "enabled_plugins",
+        }
+        for field in not_nullable:
+            if field in data and data[field] is None:
+                raise ValueError(f"{field} cannot be set to null")
+        return data

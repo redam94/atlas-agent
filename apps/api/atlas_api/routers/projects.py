@@ -7,9 +7,9 @@ AtlasConfig. Plan 2 has no auth — the user_id is hardcoded in config.
 from uuid import UUID
 
 from atlas_core.config import AtlasConfig
+from atlas_core.db.converters import project_from_orm
 from atlas_core.db.orm import ProjectORM
 from atlas_core.models.projects import (
-    PrivacyLevel,
     Project,
     ProjectCreate,
     ProjectStatus,
@@ -24,27 +24,6 @@ from atlas_api.deps import get_session, get_settings
 router = APIRouter(tags=["projects"])
 
 
-def _to_pydantic(orm_obj: ProjectORM) -> Project:
-    """Convert an ORM row to the Project Pydantic model.
-
-    Enums are constructed explicitly because ``Project`` inherits ``strict=True``
-    from ``AtlasModel`` and the ORM stores enum fields as their underlying string
-    value — a raw string would not coerce under strict mode.
-    """
-    return Project(
-        id=orm_obj.id,
-        user_id=orm_obj.user_id,
-        name=orm_obj.name,
-        description=orm_obj.description,
-        status=ProjectStatus(orm_obj.status),
-        privacy_level=PrivacyLevel(orm_obj.privacy_level),
-        default_model=orm_obj.default_model,
-        enabled_plugins=list(orm_obj.enabled_plugins or []),
-        created_at=orm_obj.created_at,
-        updated_at=orm_obj.updated_at,
-    )
-
-
 @router.get("/projects", response_model=list[Project])
 async def list_projects(
     session: AsyncSession = Depends(get_session),
@@ -55,7 +34,7 @@ async def list_projects(
         .where(ProjectORM.user_id == settings.user_id)
         .order_by(ProjectORM.created_at.desc())
     )
-    return [_to_pydantic(row) for row in result.scalars().all()]
+    return [project_from_orm(row) for row in result.scalars().all()]
 
 
 @router.post(
@@ -79,7 +58,7 @@ async def create_project(
     session.add(row)
     await session.flush()
     await session.refresh(row)
-    return _to_pydantic(row)
+    return project_from_orm(row)
 
 
 @router.get("/projects/{project_id}", response_model=Project)
@@ -91,7 +70,7 @@ async def get_project(
     row = await session.get(ProjectORM, project_id)
     if row is None or row.user_id != settings.user_id:
         raise HTTPException(status_code=404, detail="Project not found")
-    return _to_pydantic(row)
+    return project_from_orm(row)
 
 
 @router.patch("/projects/{project_id}", response_model=Project)
@@ -114,7 +93,7 @@ async def update_project(
 
     await session.flush()
     await session.refresh(row)
-    return _to_pydantic(row)
+    return project_from_orm(row)
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

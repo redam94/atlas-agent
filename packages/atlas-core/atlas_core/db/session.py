@@ -4,6 +4,9 @@ Pure functions, no global state. The FastAPI app builds these once at
 startup (in `lifespan`) and stashes them on `app.state`.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -43,3 +46,22 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
         expire_on_commit=False,  # detach instances survive commit (Pydantic-friendly)
         autoflush=False,
     )
+
+
+@asynccontextmanager
+async def session_scope(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """Yield a session from the factory. Commit on clean exit, rollback on error.
+
+    Usable from any async context — FastAPI HTTP, FastAPI WebSocket, Celery,
+    plain scripts. The HTTP-specific `apps/api/atlas_api/deps.get_session`
+    delegates to this helper.
+    """
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise

@@ -147,3 +147,19 @@ async def test_delete_project_soft_archives(app_client):
 async def test_delete_returns_404_for_missing_id(app_client):
     response = await app_client.delete(f"/api/v1/projects/{uuid4()}")
     assert response.status_code == 404
+
+
+async def test_patch_rejects_explicit_null_on_required_field(app_client):
+    """Explicit `null` for a NOT-NULL column field returns 422, not 500."""
+    created = (
+        await app_client.post(
+            "/api/v1/projects",
+            json={"name": "P", "default_model": "x"},
+        )
+    ).json()
+
+    response = await app_client.patch(
+        f"/api/v1/projects/{created['id']}",
+        json={"name": None},
+    )
+    assert response.status_code == 422

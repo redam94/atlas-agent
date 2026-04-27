@@ -7,7 +7,8 @@ testable. Tests override these via `app.dependency_overrides`.
 from collections.abc import AsyncIterator
 
 from atlas_core.config import AtlasConfig
-from fastapi import Depends, Request
+from atlas_core.db.session import session_scope
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -17,21 +18,12 @@ def get_settings(request: Request) -> AtlasConfig:
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """Yield an AsyncSession from the per-app session factory.
+    """HTTP-route dependency that yields an AsyncSession.
 
-    Commits on clean exit; rolls back on exception. The test suite overrides
-    this to inject a savepointed session for per-test isolation.
+    Delegates to `session_scope`, which is also reusable directly from
+    WebSocket handlers and Celery tasks where there is no `Request`.
+    Tests override THIS function (not session_scope) via
+    `app.dependency_overrides`.
     """
-    session_factory = request.app.state.session_factory
-    async with session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-
-# Re-exported for type clarity at import sites.
-SessionDep = Depends(get_session)
-SettingsDep = Depends(get_settings)
+    async with session_scope(request.app.state.session_factory) as session:
+        yield session
