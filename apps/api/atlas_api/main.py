@@ -9,9 +9,14 @@ from atlas_core.logging import configure_logging
 from atlas_core.providers.anthropic import AnthropicProvider
 from atlas_core.providers.lmstudio import LMStudioProvider
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
+from atlas_knowledge.embeddings import SentenceTransformersEmbedder
+from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.retrieval.retriever import Retriever
+from atlas_knowledge.vector.chroma import ChromaVectorStore
 from fastapi import FastAPI
 
 from atlas_api import __version__
+from atlas_api.routers import knowledge as knowledge_router
 from atlas_api.routers import models as models_router
 from atlas_api.routers import projects as projects_router
 from atlas_api.ws import chat as ws_chat
@@ -63,6 +68,15 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = create_session_factory(engine)
     app.state.model_registry = registry
     app.state.model_router = ModelRouter(registry)
+    embedder = SentenceTransformersEmbedder()
+    vector_store = ChromaVectorStore(
+        persist_dir=config.db.chroma_path,
+        user_id=config.user_id,
+    )
+    app.state.embedder = embedder
+    app.state.vector_store = vector_store
+    app.state.ingestion_service = IngestionService(embedder=embedder, vector_store=vector_store)
+    app.state.retriever = Retriever(embedder=embedder, vector_store=vector_store)
     log.info(
         "api.startup",
         environment=config.environment,
@@ -86,6 +100,7 @@ app = FastAPI(
 app.include_router(projects_router.router, prefix="/api/v1")
 app.include_router(models_router.router, prefix="/api/v1")
 app.include_router(ws_chat.router, prefix="/api/v1")
+app.include_router(knowledge_router.router, prefix="/api/v1")
 
 
 @app.get("/health")

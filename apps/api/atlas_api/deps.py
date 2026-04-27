@@ -13,6 +13,8 @@ from collections.abc import AsyncIterator
 from atlas_core.config import AtlasConfig
 from atlas_core.db.session import session_scope
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
+from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.retrieval.retriever import Retriever
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
@@ -39,3 +41,11 @@ def get_model_registry(connection: HTTPConnection) -> ModelRegistry:
 
 def get_model_router(connection: HTTPConnection) -> ModelRouter:
     return connection.app.state.model_router
+
+
+def get_ingestion_service(connection: HTTPConnection) -> IngestionService:
+    return connection.app.state.ingestion_service
+
+
+def get_retriever(connection: HTTPConnection) -> Retriever:
+    return connection.app.state.retriever
