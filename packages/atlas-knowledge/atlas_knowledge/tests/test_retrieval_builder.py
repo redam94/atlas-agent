@@ -78,3 +78,16 @@ def test_build_rag_context_assigns_contiguous_one_indexed_ids():
     # rendered side has matching id attrs
     for i in (1, 2, 3):
         assert f'<source id="{i}"' in ctx.rendered
+
+
+def test_build_rag_context_includes_text_preview() -> None:
+    long_text = "abcdefgh" * 30  # 240 chars > 200
+    short_text = "short text"
+    chunks = [
+        _scored(long_text, title="Doc 1", score=0.9),
+        _scored(short_text, title="Doc 2", score=0.8),
+    ]
+    ctx = build_rag_context(chunks)
+
+    assert ctx.citations[0]["text_preview"] == long_text[:200] + "…"
+    assert ctx.citations[1]["text_preview"] == short_text

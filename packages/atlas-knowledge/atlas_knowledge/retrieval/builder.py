@@ -36,12 +36,15 @@ def build_rag_context(scored: list[ScoredChunk]) -> RagContext:
             f"{xml_escape(sc.chunk.text)}"
             f"</source>"
         )
+        preview_source = sc.chunk.text or ""
+        text_preview = preview_source[:200] + "…" if len(preview_source) > 200 else preview_source
         citations.append(
             {
                 "id": idx,
                 "title": title,  # raw — JSON serialization handles its own escaping
                 "score": sc.score,
                 "chunk_id": str(sc.chunk.id),
+                "text_preview": text_preview,
             }
         )
 
