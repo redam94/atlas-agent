@@ -422,10 +422,12 @@ git commit -m "chore: scaffold atlas-api app"
 
 **Files:** none modified.
 
-- [ ] **Step 1: Run `uv sync` from repo root**
+- [ ] **Step 1: Run `uv sync --all-packages` from repo root**
 
-Run: `uv sync`
-Expected: `uv` creates `.venv/`, installs all three workspace packages plus their deps and the dev group, generates `uv.lock`. No errors.
+Run: `uv sync --all-packages`
+Expected: `uv` creates `.venv/`, installs all three workspace packages plus their transitive deps and the dev group, generates `uv.lock`. No errors.
+
+Note: `--all-packages` is required because the workspace root has `[project]` but no dependency on the workspace members. Without it, only the dev tooling group is installed.
 
 - [ ] **Step 2: Verify each package is importable**
 
@@ -1148,14 +1150,14 @@ In the API terminal: `Ctrl-C`. The shutdown log line should appear.
 
 **Files:** none.
 
-- [ ] **Step 1: Run `uv sync` from a cold cache to confirm reproducibility**
+- [ ] **Step 1: Run `uv sync --all-packages` from a cold cache to confirm reproducibility**
 
 Run:
 ```bash
 rm -rf .venv
-uv sync
+uv sync --all-packages
 ```
-Expected: Clean install, no errors.
+Expected: Clean install of all three workspace members + dev tools, no errors.
 
 - [ ] **Step 2: Run the entire test suite**
 
