@@ -70,15 +70,25 @@ class AnthropicProvider(BaseModel):
                                 type=ModelEventType.TOKEN,
                                 data={"text": delta.text},
                             )
+                    elif et == "message_start":
+                        msg = getattr(event, "message", None)
+                        if msg is not None:
+                            msg_usage = getattr(msg, "usage", None)
+                            if msg_usage is not None:
+                                new_input = getattr(msg_usage, "input_tokens", None)
+                                if new_input is not None:
+                                    input_tokens = new_input
                     elif et in ("message_delta", "message_stop"):
                         usage = getattr(event, "usage", None)
                         if usage is not None:
-                            input_tokens = (
-                                getattr(usage, "input_tokens", input_tokens) or input_tokens
-                            )
-                            output_tokens = (
-                                getattr(usage, "output_tokens", output_tokens) or output_tokens
-                            )
+                            # output_tokens is reliably present on message_delta
+                            new_output = getattr(usage, "output_tokens", None)
+                            if new_output is not None:
+                                output_tokens = new_output
+                            # input_tokens is Optional on message_delta — only update if present
+                            new_input = getattr(usage, "input_tokens", None)
+                            if new_input is not None:
+                                input_tokens = new_input
         except Exception as e:
             yield ModelEvent(
                 type=ModelEventType.ERROR,

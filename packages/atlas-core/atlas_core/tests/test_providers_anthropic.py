@@ -36,12 +36,23 @@ def _text_delta(text: str):
     return ev
 
 
-def _message_delta(input_tokens: int, output_tokens: int):
+def _message_start(input_tokens: int):
+    """Emit an event matching Anthropic SDK's RawMessageStartEvent shape."""
+    ev = MagicMock()
+    ev.type = "message_start"
+    ev.message = MagicMock()
+    ev.message.usage = MagicMock()
+    ev.message.usage.input_tokens = input_tokens
+    ev.message.usage.output_tokens = 0
+    return ev
+
+
+def _message_delta(input_tokens: int | None, output_tokens: int):
     """Emit an event matching anthropic SDK's MessageDeltaEvent shape (carries usage)."""
     ev = MagicMock()
     ev.type = "message_delta"
     ev.usage = MagicMock()
-    ev.usage.input_tokens = input_tokens
+    ev.usage.input_tokens = input_tokens  # Optional in real SDK
     ev.usage.output_tokens = output_tokens
     return ev
 
@@ -57,9 +68,10 @@ async def test_anthropic_provider_streams_tokens_and_emits_done(fake_client):
     fake_client.messages.stream = MagicMock(
         return_value=_FakeAnthropicStream(
             [
+                _message_start(input_tokens=12),
                 _text_delta("hello"),
                 _text_delta(" world"),
-                _message_delta(input_tokens=12, output_tokens=2),
+                _message_delta(input_tokens=None, output_tokens=2),
             ]
         )
     )

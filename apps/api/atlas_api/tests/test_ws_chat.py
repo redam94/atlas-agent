@@ -180,3 +180,73 @@ async def test_ws_chat_rejects_unknown_message_type(set_overrides, db_session):
         msg = await ws.receive_json()
         assert msg["type"] == "chat.error"
         assert "unknown" in msg["payload"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ws_chat_partial_assistant_not_persisted_on_disconnect(set_overrides, db_session):
+    """DoD #9: closing the WS mid-stream does not commit the partial assistant turn.
+
+    The handler flushes the user_row BEFORE the streaming loop. If the client
+    disconnects during streaming, send_json raises WebSocketDisconnect before the
+    assistant_row is ever added to the session. Because the test db_session lives
+    in a savepoint (never committed), we can verify that no assistant MessageORM row
+    exists after the WS closes.
+    """
+    import asyncio
+
+    from atlas_core.models.llm import ModelEvent, ModelEventType, ModelSpec
+    from atlas_core.providers.base import BaseModel as ProviderBase
+
+    class _SlowProvider(ProviderBase):
+        """Yields many tokens with tiny sleeps so the next send_json detects disconnect."""
+
+        def __init__(self):
+            self.spec = ModelSpec(
+                provider="fake",
+                model_id="slow-1",
+                context_window=1024,
+                supports_tools=False,
+                supports_streaming=True,
+            )
+
+        async def stream(self, messages, tools=None, temperature=0.7, max_tokens=4096):
+            for i in range(50):
+                yield ModelEvent(type=ModelEventType.TOKEN, data={"text": f"t{i}"})
+                await asyncio.sleep(0.02)
+
+    slow = _SlowProvider()
+    set_overrides.select = lambda project, model_override=None: slow  # type: ignore[assignment]
+
+    project_id = await _seed_project(db_session)
+    from uuid import uuid4
+
+    session_id = uuid4()
+
+    async with (
+        make_ws_client() as client,
+        aconnect_ws(
+            f"ws://test/api/v1/ws/{session_id}",
+            client=client,
+        ) as ws,
+    ):
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {"text": "hi", "project_id": str(project_id)},
+            }
+        )
+        # Receive the first token, then close — server will detect disconnect
+        # on the next send_json attempt.
+        first = await ws.receive_json()
+        assert first["type"] == "chat.token"
+        # Exiting the context manager closes the WS connection.
+
+    # Give the server a moment to process the disconnect.
+    await asyncio.sleep(0.1)
+
+    # The assistant_row is only added AFTER the streaming loop completes (ws/chat.py line 185+).
+    # A mid-stream disconnect exits the loop early via WebSocketDisconnect before that point,
+    # so no assistant row should ever be flushed.
+    messages = (await db_session.execute(select(MessageORM))).scalars().all()
+    assistant_messages = [m for m in messages if m.role == "assistant"]
+    assert len(assistant_messages) == 0, "no partial assistant row should persist after disconnect"
