@@ -2,28 +2,40 @@
 
 These wrap stateful resources (config, DB session) so handlers stay
 testable. Tests override these via `app.dependency_overrides`.
+
+Parameters use ``HTTPConnection`` (the common base of ``Request`` and
+``WebSocket``) so the same dependency works for both REST and WebSocket
+routes.
 """
 
 from collections.abc import AsyncIterator
 
 from atlas_core.config import AtlasConfig
 from atlas_core.db.session import session_scope
-from fastapi import Request
+from atlas_core.providers.registry import ModelRegistry, ModelRouter
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import HTTPConnection
 
 
-def get_settings(request: Request) -> AtlasConfig:
+def get_settings(connection: HTTPConnection) -> AtlasConfig:
     """Return the AtlasConfig stored on app.state by the lifespan."""
-    return request.app.state.config
+    return connection.app.state.config
 
 
-async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """HTTP-route dependency that yields an AsyncSession.
+async def get_session(connection: HTTPConnection) -> AsyncIterator[AsyncSession]:
+    """Dependency that yields an AsyncSession for both HTTP and WebSocket routes.
 
-    Delegates to `session_scope`, which is also reusable directly from
-    WebSocket handlers and Celery tasks where there is no `Request`.
-    Tests override THIS function (not session_scope) via
-    `app.dependency_overrides`.
+    Delegates to ``session_scope``, which is also reusable directly from
+    Celery tasks where there is no connection. Tests override THIS function
+    (not session_scope) via ``app.dependency_overrides``.
     """
-    async with session_scope(request.app.state.session_factory) as session:
+    async with session_scope(connection.app.state.session_factory) as session:
         yield session
+
+
+def get_model_registry(connection: HTTPConnection) -> ModelRegistry:
+    return connection.app.state.model_registry
+
+
+def get_model_router(connection: HTTPConnection) -> ModelRouter:
+    return connection.app.state.model_router

@@ -1,0 +1,10 @@
+{# VARIABLES:
+   project_name: str (required)
+   project_description: str | None
+   privacy_level: str (required)
+#}
+## Project Context
+You are working in project: **{{ project_name }}**.
+{% if project_description is defined and project_description %}{{ project_description }}{% endif %}
+
+Privacy mode: {{ privacy_level }}.
