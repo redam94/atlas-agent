@@ -21,11 +21,14 @@ from atlas_core.config import AtlasConfig
 from atlas_core.db.orm import MessageORM, SessionORM
 from atlas_core.providers import FakeProvider
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
+from atlas_knowledge.embeddings import FakeEmbedder
+from atlas_knowledge.retrieval.retriever import Retriever
+from atlas_knowledge.vector.chroma import ChromaVectorStore
 from httpx_ws import aconnect_ws
 from httpx_ws.transport import ASGIWebSocketTransport
 from sqlalchemy import select
 
-from atlas_api.deps import get_model_router, get_session, get_settings
+from atlas_api.deps import get_model_router, get_retriever, get_session, get_settings
 from atlas_api.main import app
 
 
@@ -42,8 +45,8 @@ def fake_router():
 
 
 @pytest_asyncio.fixture
-async def set_overrides(db_session, fake_router):
-    """Set dependency overrides for DB session, model router, and settings.
+async def set_overrides(db_session, fake_router, tmp_path):
+    """Set dependency overrides for DB session, model router, settings, retriever.
 
     Yields the fake_router so tests can mutate it to inject failures.
     Clears overrides in teardown.
@@ -58,9 +61,15 @@ async def set_overrides(db_session, fake_router):
     def _override_settings():
         return AtlasConfig()
 
+    fake_retriever = Retriever(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=ChromaVectorStore(persist_dir=str(tmp_path / "chroma"), user_id="matt"),
+    )
+
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_model_router] = _override_router
     app.dependency_overrides[get_settings] = _override_settings
+    app.dependency_overrides[get_retriever] = lambda: fake_retriever
 
     yield fake_router
 
