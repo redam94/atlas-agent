@@ -66,6 +66,7 @@ def knowledge_node_from_orm(row: KnowledgeNodeORM):
     at module-import time.
     """
     from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
+
     return KnowledgeNode(
         id=row.id,
         user_id=row.user_id,
@@ -85,6 +86,7 @@ def ingestion_job_from_orm(row: IngestionJobORM):
     from uuid import UUID
 
     from atlas_knowledge.models.ingestion import IngestionJob, IngestionStatus, SourceType
+
     return IngestionJob(
         id=row.id,
         user_id=row.user_id,

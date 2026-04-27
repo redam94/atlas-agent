@@ -60,6 +60,7 @@ def test_message_from_orm_handles_jsonb_none():
 
 def _build_knowledge_node_row():
     from atlas_core.db.orm import KnowledgeNodeORM
+
     return KnowledgeNodeORM(
         id=uuid4(),
         user_id="matt",
@@ -76,6 +77,7 @@ def _build_knowledge_node_row():
 
 def _build_ingestion_job_row():
     from atlas_core.db.orm import IngestionJobORM
+
     return IngestionJobORM(
         id=uuid4(),
         user_id="matt",
@@ -91,8 +93,10 @@ def _build_ingestion_job_row():
 
 
 def test_knowledge_node_from_orm():
-    from atlas_core.db.converters import knowledge_node_from_orm
     from atlas_knowledge.models.nodes import KnowledgeNodeType
+
+    from atlas_core.db.converters import knowledge_node_from_orm
+
     row = _build_knowledge_node_row()
     n = knowledge_node_from_orm(row)
     assert n.type is KnowledgeNodeType.CHUNK
@@ -101,8 +105,10 @@ def test_knowledge_node_from_orm():
 
 
 def test_ingestion_job_from_orm():
-    from atlas_core.db.converters import ingestion_job_from_orm
     from atlas_knowledge.models.ingestion import IngestionStatus, SourceType
+
+    from atlas_core.db.converters import ingestion_job_from_orm
+
     row = _build_ingestion_job_row()
     job = ingestion_job_from_orm(row)
     assert job.status is IngestionStatus.COMPLETED

@@ -1,4 +1,5 @@
 """Smoke tests for KnowledgeNodeORM + IngestionJobORM round-trips."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
