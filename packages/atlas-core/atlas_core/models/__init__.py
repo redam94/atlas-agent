@@ -6,6 +6,12 @@ from atlas_core.models.base import (
     MutableAtlasModel,
     TimestampedModel,
 )
+from atlas_core.models.messages import (
+    ChatRequest,
+    Message,
+    StreamEvent,
+    StreamEventType,
+)
 from atlas_core.models.projects import (
     PrivacyLevel,
     Project,
@@ -22,6 +28,8 @@ from atlas_core.models.sessions import (
 __all__ = [
     "AtlasModel",
     "AtlasRequestModel",
+    "ChatRequest",
+    "Message",
     "MessageRole",
     "MutableAtlasModel",
     "PrivacyLevel",
@@ -31,5 +39,7 @@ __all__ = [
     "ProjectUpdate",
     "Session",
     "SessionCreate",
+    "StreamEvent",
+    "StreamEventType",
     "TimestampedModel",
 ]
