@@ -1,18 +1,17 @@
 """Alembic env, async-aware. Reads DB URL from AtlasConfig at runtime."""
+
 import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
-
 from atlas_core.config import AtlasConfig
-from atlas_core.db.base import Base
-from atlas_core.db.session import _normalize_url
 
 # Import ORM models so Base.metadata sees them. Imports are deliberate
 # (do not remove unused-import noqa) — registration is a side effect.
 from atlas_core.db import orm  # noqa: F401
+from atlas_core.db.base import Base
+from atlas_core.db.session import _normalize_url
+from sqlalchemy.engine import Connection
 
 config = context.config
 

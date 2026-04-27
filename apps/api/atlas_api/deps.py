@@ -3,12 +3,12 @@
 These wrap stateful resources (config, DB session) so handlers stay
 testable. Tests override these via `app.dependency_overrides`.
 """
+
 from collections.abc import AsyncIterator
 
+from atlas_core.config import AtlasConfig
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from atlas_core.config import AtlasConfig
 
 
 def get_settings(request: Request) -> AtlasConfig:

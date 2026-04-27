@@ -3,6 +3,7 @@
 Pure functions, no global state. The FastAPI app builds these once at
 startup (in `lifespan`) and stashes them on `app.state`.
 """
+
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,

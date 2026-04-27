@@ -5,6 +5,7 @@ Three model variants:
 - ``ProjectCreate`` — POST body for creating a project
 - ``ProjectUpdate`` — PATCH body, all fields optional
 """
+
 from enum import StrEnum
 
 from pydantic import Field

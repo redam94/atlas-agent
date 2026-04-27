@@ -3,13 +3,9 @@
 Single-user-aware: every query filters by the configured user_id from
 AtlasConfig. Plan 2 has no auth — the user_id is hardcoded in config.
 """
+
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from atlas_api.deps import get_session, get_settings
 from atlas_core.config import AtlasConfig
 from atlas_core.db.orm import ProjectORM
 from atlas_core.models.projects import (
@@ -19,6 +15,11 @@ from atlas_core.models.projects import (
     ProjectStatus,
     ProjectUpdate,
 )
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from atlas_api.deps import get_session, get_settings
 
 router = APIRouter(tags=["projects"])
 

@@ -1,4 +1,5 @@
 """Single SQLAlchemy DeclarativeBase shared by every ORM model in atlas-core."""
+
 from sqlalchemy.orm import DeclarativeBase
 
 

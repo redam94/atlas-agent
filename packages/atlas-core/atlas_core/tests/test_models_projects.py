@@ -1,5 +1,6 @@
 """Tests for atlas_core.models.projects."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -24,8 +25,8 @@ def _make_project(**overrides) -> Project:
         "privacy_level": PrivacyLevel.CLOUD_OK,
         "default_model": "claude-sonnet-4-6",
         "enabled_plugins": [],
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
     return Project(**{**base, **overrides})
 

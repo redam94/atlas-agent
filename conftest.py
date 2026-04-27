@@ -6,18 +6,20 @@ session-scoped DB fixtures: ensures the `atlas_test` database exists,
 runs Alembic migrations to head once per session, and yields per-test
 async sessions wrapped in savepoints for isolation.
 """
-import asyncio
+
+import contextlib
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 # Defaults BEFORE imports below — they trigger pydantic-settings.
-os.environ.setdefault("ATLAS_DB__DATABASE_URL", "postgresql://atlas:atlas@localhost:5432/atlas_test")
+os.environ.setdefault(
+    "ATLAS_DB__DATABASE_URL", "postgresql://atlas:atlas@localhost:5432/atlas_test"
+)
 os.environ.setdefault("ATLAS_ENVIRONMENT", "development")
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -66,9 +68,7 @@ def setup_test_database():
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
     """Session-scoped async engine for the test DB."""
-    engine = create_async_engine(
-        TEST_DB_URL, pool_pre_ping=True, poolclass=NullPool
-    )
+    engine = create_async_engine(TEST_DB_URL, pool_pre_ping=True, poolclass=NullPool)
     yield engine
     await engine.dispose()
 
@@ -98,10 +98,9 @@ async def app_client(db_session):
     Yields an `httpx.AsyncClient` bound to the app via ASGITransport.
     Also manually invokes the lifespan to ensure app.state is initialized.
     """
-    from httpx import ASGITransport, AsyncClient
-
     from atlas_api.deps import get_session
     from atlas_api.main import app
+    from httpx import ASGITransport, AsyncClient
 
     async def _override_session():
         yield db_session
@@ -113,14 +112,9 @@ async def app_client(db_session):
     await lifespan_manager.__aenter__()
 
     try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             yield client
     finally:
-        # Cleanup
-        try:
+        with contextlib.suppress(Exception):
             await lifespan_manager.__aexit__(None, None, None)
-        except Exception:
-            pass
         app.dependency_overrides.clear()

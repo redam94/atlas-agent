@@ -1,4 +1,5 @@
 """Tests for atlas_core.db.orm — pure structural checks (no DB roundtrip)."""
+
 from sqlalchemy import inspect
 
 from atlas_core.db.orm import ProjectORM

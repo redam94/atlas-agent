@@ -1,7 +1,6 @@
 """Integration tests for the /projects router against a real Postgres test DB."""
-from uuid import uuid4
 
-import pytest
+from uuid import uuid4
 
 
 async def test_list_projects_empty(app_client):
@@ -124,9 +123,7 @@ async def test_patch_project_changes_privacy_level(app_client):
 
 
 async def test_patch_returns_404_for_missing_id(app_client):
-    response = await app_client.patch(
-        f"/api/v1/projects/{uuid4()}", json={"name": "x"}
-    )
+    response = await app_client.patch(f"/api/v1/projects/{uuid4()}", json={"name": "x"})
     assert response.status_code == 404
 
 

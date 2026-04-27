@@ -3,6 +3,7 @@
 Each table in the spec maps to one ORM class here. Plan 2 ships
 `ProjectORM`; later plans append `SessionORM`, `MessageORM`, etc.
 """
+
 from datetime import datetime
 from uuid import UUID
 
@@ -29,13 +30,9 @@ class ProjectORM(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
-    privacy_level: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default="cloud_ok"
-    )
+    privacy_level: Mapped[str] = mapped_column(Text, nullable=False, server_default="cloud_ok")
     default_model: Mapped[str] = mapped_column(Text, nullable=False)
-    enabled_plugins: Mapped[list[str]] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
+    enabled_plugins: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default="[]")
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -43,6 +40,4 @@ class ProjectORM(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
-    __table_args__ = (
-        Index("projects_user_idx", "user_id"),
-    )
+    __table_args__ = (Index("projects_user_idx", "user_id"),)

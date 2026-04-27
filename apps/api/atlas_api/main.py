@@ -1,14 +1,15 @@
 """ATLAS FastAPI application entry point."""
+
 from contextlib import asynccontextmanager
 
 import structlog
+from atlas_core.config import AtlasConfig
+from atlas_core.db.session import create_engine_from_config, create_session_factory
+from atlas_core.logging import configure_logging
 from fastapi import FastAPI
 
 from atlas_api import __version__
 from atlas_api.routers import projects as projects_router
-from atlas_core.config import AtlasConfig
-from atlas_core.db.session import create_engine_from_config, create_session_factory
-from atlas_core.logging import configure_logging
 
 config = AtlasConfig()
 configure_logging(environment=config.environment, log_level=config.log_level)

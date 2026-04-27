@@ -1,5 +1,5 @@
 """Tests for atlas_core.db.session."""
-import pytest
+
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from atlas_core.config import AtlasConfig
