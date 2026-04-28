@@ -2,6 +2,7 @@
 
 POST   /api/v1/knowledge/ingest          Upload markdown text
 POST   /api/v1/knowledge/ingest/pdf      Upload a PDF (multipart)
+POST   /api/v1/knowledge/ingest/url      Ingest a URL (Playwright + Trafilatura)
 GET    /api/v1/knowledge/jobs/{id}       Ingestion job status
 GET    /api/v1/knowledge/nodes           List nodes for a project
 DELETE /api/v1/knowledge/nodes/{id}      Delete node + chunks
@@ -23,11 +24,13 @@ from atlas_knowledge.models.ingestion import (
     IngestionJob,
     IngestRequest,
     SourceType,
+    UrlIngestRequest,
 )
 from atlas_knowledge.models.nodes import KnowledgeNode
 from atlas_knowledge.models.retrieval import RetrievalQuery, RetrievalResult
 from atlas_knowledge.parsers.markdown import parse_markdown
 from atlas_knowledge.parsers.pdf import parse_pdf
+from atlas_knowledge.parsers.url import parse_url, validate_url
 from atlas_knowledge.retrieval.retriever import Retriever
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
@@ -95,6 +98,40 @@ async def ingest_pdf_endpoint(
         parsed=parsed,
         source_type="pdf",
         source_filename=file.filename,
+    )
+    job_row = await db.get(IngestionJobORM, job_id)
+    if job_row is None:
+        raise HTTPException(status_code=500, detail="ingest created no job row")
+    return ingestion_job_from_orm(job_row)
+
+
+@router.post("/knowledge/ingest/url", response_model=IngestionJob, status_code=202)
+async def ingest_url_endpoint(
+    payload: UrlIngestRequest,
+    db: AsyncSession = Depends(get_session),
+    service: IngestionService = Depends(get_ingestion_service),
+    settings: AtlasConfig = Depends(get_settings),
+) -> IngestionJob:
+    if await db.get(ProjectORM, payload.project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    url = str(payload.url)
+    try:
+        validate_url(url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    try:
+        parsed = await parse_url(url)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=f"could not extract content: {e}") from e
+    except Exception as e:  # noqa: BLE001 — Playwright errors are varied
+        raise HTTPException(status_code=502, detail=f"fetch failed: {e}") from e
+    job_id = await service.ingest(
+        db=db,
+        user_id=settings.user_id,
+        project_id=payload.project_id,
+        parsed=parsed,
+        source_type="url",
+        source_filename=url,
     )
     job_row = await db.get(IngestionJobORM, job_id)
     if job_row is None:

@@ -1,9 +1,13 @@
 """Integration tests for /api/v1/knowledge/* — uses FakeEmbedder + tmp Chroma."""
 
+from unittest.mock import patch
+from uuid import uuid4
+
 import pytest
 from atlas_core.db.orm import KnowledgeNodeORM, ProjectORM
 from atlas_knowledge.embeddings import FakeEmbedder
 from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.parsers.markdown import ParsedDocument
 from atlas_knowledge.retrieval.retriever import Retriever
 from atlas_knowledge.vector.chroma import ChromaVectorStore
 from sqlalchemy import select
@@ -90,3 +94,126 @@ async def test_ingest_unknown_project_returns_404(app_with_knowledge_overrides):
     resp = await app_with_knowledge_overrides.post("/api/v1/knowledge/ingest", json=body)
     assert resp.status_code == 404
     assert resp.json()["detail"] == "project not found"
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_happy_path(app_with_knowledge_overrides, db_session):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    parsed = ParsedDocument(
+        text="alpha beta " * 200,
+        title="Geo-Lift Methodology",
+        source_type="url",
+        metadata={"source_url": "https://blog.example.com/geo-lift"},
+    )
+
+    async def fake_parse_url(_url):
+        return parsed
+
+    with patch(
+        "atlas_api.routers.knowledge.parse_url",
+        side_effect=fake_parse_url,
+    ), patch(
+        "atlas_api.routers.knowledge.validate_url",
+        side_effect=lambda u: u,
+    ):
+        resp = await app_with_knowledge_overrides.post(
+            "/api/v1/knowledge/ingest/url",
+            json={
+                "project_id": str(project.id),
+                "url": "https://blog.example.com/geo-lift",
+            },
+        )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["status"] == "completed"
+    assert body["source_type"] == "url"
+    assert body["source_filename"] == "https://blog.example.com/geo-lift"
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_unknown_project_returns_404(app_with_knowledge_overrides):
+    resp = await app_with_knowledge_overrides.post(
+        "/api/v1/knowledge/ingest/url",
+        json={"project_id": str(uuid4()), "url": "https://example.com/x"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_invalid_scheme_returns_422(app_with_knowledge_overrides, db_session):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    resp = await app_with_knowledge_overrides.post(
+        "/api/v1/knowledge/ingest/url",
+        json={"project_id": str(project.id), "url": "ftp://example.com/x"},
+    )
+    # pydantic v2 HttpUrl rejects non-http schemes at the request boundary → 422.
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_ssrf_block_returns_400(app_with_knowledge_overrides, db_session):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    def boom(_url):
+        raise ValueError("url resolves to disallowed address '10.0.0.1'")
+
+    with patch("atlas_api.routers.knowledge.validate_url", side_effect=boom):
+        resp = await app_with_knowledge_overrides.post(
+            "/api/v1/knowledge/ingest/url",
+            json={"project_id": str(project.id), "url": "https://internal.example/x"},
+        )
+    assert resp.status_code == 400
+    assert "disallowed" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_fetch_failure_returns_502(app_with_knowledge_overrides, db_session):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    async def fake_parse_url(_url):
+        raise RuntimeError("playwright nav timeout")
+
+    with patch(
+        "atlas_api.routers.knowledge.parse_url", side_effect=fake_parse_url
+    ), patch(
+        "atlas_api.routers.knowledge.validate_url", side_effect=lambda u: u
+    ):
+        resp = await app_with_knowledge_overrides.post(
+            "/api/v1/knowledge/ingest/url",
+            json={"project_id": str(project.id), "url": "https://example.com/x"},
+        )
+    assert resp.status_code == 502
+    assert "fetch failed" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_extraction_empty_returns_502(app_with_knowledge_overrides, db_session):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    async def fake_parse_url(_url):
+        raise ValueError("no extractable content from URL")
+
+    with patch(
+        "atlas_api.routers.knowledge.parse_url", side_effect=fake_parse_url
+    ), patch(
+        "atlas_api.routers.knowledge.validate_url", side_effect=lambda u: u
+    ):
+        resp = await app_with_knowledge_overrides.post(
+            "/api/v1/knowledge/ingest/url",
+            json={"project_id": str(project.id), "url": "https://example.com/x"},
+        )
+    assert resp.status_code == 502
+    assert "extract" in resp.json()["detail"].lower()
