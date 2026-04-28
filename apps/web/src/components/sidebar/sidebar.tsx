@@ -1,4 +1,5 @@
 import { ProjectList } from "./project-list";
+import { NewProjectModal } from "./new-project-modal";
 
 export function Sidebar() {
   return (
@@ -9,7 +10,9 @@ export function Sidebar() {
           Projects
         </div>
         <ProjectList />
-        {/* NewProjectButton mounts here in Task C3 */}
+        <div className="mt-2">
+          <NewProjectModal />
+        </div>
       </div>
       <div className="border-t p-3 text-xs text-muted-foreground">⚙ Settings</div>
     </aside>
