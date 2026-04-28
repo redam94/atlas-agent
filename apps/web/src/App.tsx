@@ -1,13 +1,11 @@
 import { Outlet } from "react-router-dom";
+import { Sidebar } from "@/components/sidebar/sidebar";
 
 export function App() {
   return (
     <div className="flex h-screen">
-      <aside className="w-64 border-r bg-muted/30 p-4">
-        <div className="font-semibold">ATLAS</div>
-        {/* Sidebar will be replaced in Task C2. */}
-      </aside>
-      <main className="flex-1 overflow-hidden">
+      <Sidebar />
+      <main className="flex flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
     </div>
