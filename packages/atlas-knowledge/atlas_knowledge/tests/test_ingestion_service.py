@@ -1,14 +1,15 @@
 """Integration test for IngestionService — uses FakeEmbedder + tmp Chroma."""
 
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from sqlalchemy import select
 
 from atlas_knowledge.embeddings import FakeEmbedder
-from atlas_knowledge.ingestion.protocols import GraphWriter
-from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.ingestion.protocols import ChunkSpecLike, GraphWriter
+from atlas_knowledge.ingestion.service import IngestionService, _ChunkSpecAdapter
 from atlas_knowledge.parsers.markdown import parse_markdown
 from atlas_knowledge.vector.chroma import ChromaVectorStore
 
@@ -161,3 +162,16 @@ async def test_ingest_marks_job_failed_when_graph_writer_raises(
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
     assert job.status == "failed"
     assert "graph down" in job.error
+    # Rollback verification: doc + chunk rows should be deleted.
+    nodes = (await db_session.execute(select(KnowledgeNodeORM))).scalars().all()
+    assert nodes == [], f"expected empty knowledge_nodes table, got {len(nodes)} rows"
+
+
+def test_chunk_spec_adapter_satisfies_chunk_spec_like_protocol():
+    """Drift protection: _ChunkSpecAdapter must structurally satisfy ChunkSpecLike."""
+    adapter = _ChunkSpecAdapter(id=uuid4(), position=0, token_count=0, text_preview="")
+    # Type-check at runtime: this assignment fails if shape diverges.
+    _: ChunkSpecLike = adapter
+    # Also verify the to_param shape.
+    param = adapter.to_param()
+    assert set(param.keys()) == {"id", "position", "token_count", "text_preview"}

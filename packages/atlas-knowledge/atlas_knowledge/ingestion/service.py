@@ -24,6 +24,8 @@ from atlas_knowledge.vector.store import VectorStore
 
 log = structlog.get_logger("atlas.knowledge.ingest")
 
+_TEXT_PREVIEW_LEN = 200
+
 
 @dataclass(frozen=True)
 class _ChunkSpecAdapter:
@@ -103,6 +105,10 @@ class IngestionService:
             raw_chunks = self._chunker.chunk(parsed.text)
             if not raw_chunks:
                 # Edge case: empty document. Job completes with just the doc node.
+                # NOTE: this path skips step 5.5, so the document exists in Postgres
+                # but NOT in Neo4j. Plan 4/5 retrieval should treat doc-without-chunks
+                # as a non-graph-indexed leaf; or this branch should call
+                # graph_writer.write_document_chunks(chunks=[]) explicitly.
                 job.status = "completed"
                 job.completed_at = datetime.now(UTC)
                 job.node_ids = [str(doc_row.id)]
@@ -164,7 +170,7 @@ class IngestionService:
                             id=r.id,
                             position=int((r.metadata_ or {}).get("index", 0)),
                             token_count=int((r.metadata_ or {}).get("token_count", 0)),
-                            text_preview=r.text[:200],
+                            text_preview=r.text[:_TEXT_PREVIEW_LEN],
                         )
                         for r in chunk_rows
                     ],
