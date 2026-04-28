@@ -8,6 +8,7 @@ Public API:
 """
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from atlas_knowledge.parsers.markdown import ParsedDocument
 
 _ALLOWED_SCHEMES = {"http", "https"}
 _MIN_EXTRACT_CHARS = 100
+_NETWORKIDLE_TIMEOUT_MS = 5000
 
 
 def validate_url(url: str) -> str:
@@ -110,3 +112,48 @@ def parse_html(html: str, url: str) -> ParsedDocument:
         source_type="url",
         metadata=metadata,
     )
+
+
+async def fetch_html(url: str, *, timeout_s: float = 30.0) -> str:
+    """Render `url` with headless Chromium and return the rendered HTML.
+
+    Per-request browser: launches and closes one Chromium instance per call.
+    Hard wall-clock timeout via asyncio.wait_for; soft networkidle wait so
+    SPAs that never go idle still return after the DOM is ready.
+    """
+    # Late import so the module imports cheaply when the API isn't ingesting.
+    from playwright.async_api import (
+        TimeoutError as PlaywrightTimeoutError,
+        async_playwright,
+    )
+
+    async def _do() -> str:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            try:
+                ctx = await browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    )
+                )
+                page = await ctx.new_page()
+                await page.goto(url, wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state(
+                        "networkidle", timeout=_NETWORKIDLE_TIMEOUT_MS
+                    )
+                except PlaywrightTimeoutError:
+                    pass  # SPA never goes idle; current DOM is good enough.
+                return await page.content()
+            finally:
+                await browser.close()
+
+    return await asyncio.wait_for(_do(), timeout=timeout_s)
+
+
+async def parse_url(url: str) -> ParsedDocument:
+    """Public facade: fetch_html then parse_html."""
+    html = await fetch_html(url)
+    return parse_html(html, url)
