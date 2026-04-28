@@ -101,7 +101,7 @@ describe("IngestModal", () => {
     render(<IngestModal open onOpenChange={() => {}} project_id="p" />, { wrapper });
 
     await user.click(screen.getByRole("tab", { name: /url/i }));
-    const input = screen.getByDisplayValue("") as HTMLInputElement;
+    const input = screen.getByRole("textbox", { name: "URL" });
     await user.type(input, "https://example.com/x");
     await user.click(screen.getByRole("button", { name: /ingest/i }));
 
@@ -110,27 +110,18 @@ describe("IngestModal", () => {
 
   it("disables ingest when the URL is empty or malformed", async () => {
     const user = userEvent.setup();
-    const { unmount } = render(<IngestModal open onOpenChange={() => {}} project_id="p" />, { wrapper });
+    render(<IngestModal open onOpenChange={() => {}} project_id="p" />, { wrapper });
 
-    // First test: empty URL should disable button
     await user.click(screen.getByRole("tab", { name: /url/i }));
-    let ingestBtn = screen.getByRole("button", { name: /ingest/i });
+    const ingestBtn = screen.getByRole("button", { name: /ingest/i });
     expect(ingestBtn).toBeDisabled();
 
-    // Test malformed URL
-    let input = screen.getByDisplayValue("") as HTMLInputElement;
+    const input = screen.getByRole("textbox", { name: "URL" });
     await user.type(input, "not a url");
     expect(ingestBtn).toBeDisabled();
 
-    // Unmount and re-render for clean state
-    unmount();
-    render(<IngestModal open onOpenChange={() => {}} project_id="p" />, { wrapper });
-
-    // Test valid URL should enable button
-    await user.click(screen.getByRole("tab", { name: /url/i }));
-    input = screen.getByDisplayValue("") as HTMLInputElement;
+    await user.clear(input);
     await user.type(input, "https://example.com/article");
-    ingestBtn = screen.getByRole("button", { name: /ingest/i });
     expect(ingestBtn).not.toBeDisabled();
   });
 });
