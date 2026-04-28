@@ -48,11 +48,15 @@ export function useAtlasChat(opts: {
   const retryRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aliveRef = useRef(true);
+  const pendingRef = useRef<string | null>(null);
 
   // Hydrate messages from persisted on first load. We replace, not merge,
   // because persisted is the authoritative server state for this session.
   useEffect(() => {
     if (!persisted) return;
+    // Do not hydrate over an in-flight stream — the user has optimistic
+    // turns in flight that the server snapshot doesn't yet include.
+    if (messages.some((m) => !m.finalized)) return;
     setMessages(
       persisted.map(
         (m: SessionMessage): ChatMessage => ({
@@ -63,6 +67,7 @@ export function useAtlasChat(opts: {
         }),
       ),
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persisted]);
 
   const connect = useCallback(() => {
@@ -74,6 +79,10 @@ export function useAtlasChat(opts: {
 
     ws.onopen = () => {
       retryRef.current = 0;
+      if (pendingRef.current && wsRef.current?.readyState === 1) {
+        wsRef.current.send(pendingRef.current);
+        pendingRef.current = null;
+      }
     };
 
     ws.onmessage = (ev) => {
@@ -143,7 +152,7 @@ export function useAtlasChat(opts: {
 
     ws.onclose = (ev) => {
       if (!aliveRef.current) return;
-      if (ev.code === 1000) return;
+      if (ev.code === 1000 || ev.code === 4000) return;
       // Finalize a partial message with a "(disconnected)" trailer.
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -204,7 +213,12 @@ export function useAtlasChat(opts: {
           ...(model_id ? { model_override: model_id } : {}),
         },
       };
-      wsRef.current?.send(JSON.stringify(out));
+      const serialized = JSON.stringify(out);
+      if (wsRef.current && wsRef.current.readyState === 1) {
+        wsRef.current.send(serialized);
+      } else {
+        pendingRef.current = serialized;
+      }
     },
     [project_id, model_id],
   );
