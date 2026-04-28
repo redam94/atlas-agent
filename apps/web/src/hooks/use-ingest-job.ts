@@ -7,7 +7,7 @@ export type IngestionJob = {
   id: string;
   user_id: string;
   project_id: string;
-  source_type: "markdown" | "pdf";
+  source_type: "markdown" | "pdf" | "url";
   source_filename: string | null;
   status: IngestionStatus;
   node_ids: string[];
@@ -39,6 +39,15 @@ export function useStartPdfIngest() {
       form.append("file", body.file);
       return api.postForm<IngestionJob>("/api/v1/knowledge/ingest/pdf", form);
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ingestion-jobs"] }),
+  });
+}
+
+export function useStartUrlIngest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { project_id: string; url: string }) =>
+      api.post<IngestionJob>("/api/v1/knowledge/ingest/url", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ingestion-jobs"] }),
   });
 }
