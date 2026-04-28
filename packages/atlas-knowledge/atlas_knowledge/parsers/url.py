@@ -9,6 +9,7 @@ Public API:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import socket
 from datetime import UTC, datetime
@@ -122,10 +123,8 @@ async def fetch_html(url: str, *, timeout_s: float = 30.0) -> str:
     SPAs that never go idle still return after the DOM is ready.
     """
     # Late import so the module imports cheaply when the API isn't ingesting.
-    from playwright.async_api import (
-        TimeoutError as PlaywrightTimeoutError,
-        async_playwright,
-    )
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.async_api import async_playwright
 
     async def _do() -> str:
         async with async_playwright() as p:
@@ -140,12 +139,11 @@ async def fetch_html(url: str, *, timeout_s: float = 30.0) -> str:
                 )
                 page = await ctx.new_page()
                 await page.goto(url, wait_until="domcontentloaded")
-                try:
+                # SPA never goes idle; current DOM is good enough.
+                with contextlib.suppress(PlaywrightTimeoutError):
                     await page.wait_for_load_state(
                         "networkidle", timeout=_NETWORKIDLE_TIMEOUT_MS
                     )
-                except PlaywrightTimeoutError:
-                    pass  # SPA never goes idle; current DOM is good enough.
                 return await page.content()
             finally:
                 await browser.close()

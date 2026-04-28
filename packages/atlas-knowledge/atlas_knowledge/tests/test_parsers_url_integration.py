@@ -1,8 +1,8 @@
 """Integration tests for the URL parser — requires Chromium installed.
 
 Skipped unless ATLAS_RUN_PLAYWRIGHT_TESTS=1. Spins up a tiny aiohttp server on
-127.0.0.1 and points the parser at it (after locally bypassing validate_url's
-loopback rejection — that branch is covered by the unit tests already).
+127.0.0.1 and points the parser at it. No validate_url bypass needed —
+parse_url does not call it; validation is the router's job.
 """
 from __future__ import annotations
 
