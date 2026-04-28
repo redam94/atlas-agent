@@ -11,6 +11,7 @@ GET    /api/v1/knowledge/search          Debug RAG search
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from atlas_core.config import AtlasConfig
@@ -116,7 +117,9 @@ async def ingest_url_endpoint(
         raise HTTPException(status_code=404, detail="project not found")
     url = str(payload.url)
     try:
-        validate_url(url)
+        # validate_url does a blocking socket.getaddrinfo; run in a worker
+        # thread so the FastAPI event loop isn't stalled during DNS resolution.
+        await asyncio.to_thread(validate_url, url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     try:
