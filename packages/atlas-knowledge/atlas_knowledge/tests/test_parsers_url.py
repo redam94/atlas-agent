@@ -132,9 +132,16 @@ def test_parse_html_rejects_empty_or_tiny_content():
     assert "no extractable content" in str(excinfo.value).lower()
 
 
-def test_parse_html_falls_back_to_url_when_no_title(monkeypatch):
+def test_parse_html_falls_back_to_url_when_no_title():
     # A page with no <title> and no metadata title should fall back to the URL.
     html = "<html><body><article><p>" + ("alpha beta " * 80) + "</p></article></body></html>"
     doc = parse_html(html, "https://no-title.example.com/path")
     assert doc.title == "https://no-title.example.com/path"
     assert "alpha beta" in doc.text
+
+
+def test_parse_html_rejects_garbage_input():
+    # Trafilatura returns None for non-HTML garbage; parse_html should surface
+    # it as ValueError (the "extracted is None" branch), not AttributeError.
+    with pytest.raises(ValueError, match="no extractable content"):
+        parse_html("not html at all just random words", "https://example.com/")

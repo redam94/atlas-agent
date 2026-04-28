@@ -61,6 +61,8 @@ def parse_html(html: str, url: str) -> ParsedDocument:
 
     Raises ValueError if Trafilatura returns no usable content.
     """
+    if not html or not html.strip():
+        raise ValueError("no extractable content (empty html)")
     extracted = trafilatura.bare_extraction(
         html,
         output_format="markdown",
