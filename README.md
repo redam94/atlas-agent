@@ -8,7 +8,22 @@ Phase 1 — Foundation. See `docs/superpowers/specs/` and `docs/superpowers/plan
 
 ## Quick start
 
-Prerequisites: Python 3.13, uv, Docker, Docker Compose.
+Prerequisites: Python 3.13, uv, Docker, Docker Compose, Node.js 20+, pnpm.
+
+### Quickstart (full stack via Docker Compose)
+
+```bash
+cp .env.example .env
+# Edit .env — set ATLAS_LLM__ANTHROPIC_API_KEY at minimum
+
+cd infra
+docker compose up --build
+# Wait for postgres + redis + api + web to come up healthy.
+```
+
+Open http://localhost:3000. Create a project, ingest some markdown, chat.
+
+### Quickstart (local dev — backend hot-reload)
 
 ```bash
 # 1. Install Python deps (--all-packages installs every workspace member)
@@ -32,9 +47,26 @@ curl http://localhost:8000/health
 uv run pytest
 ```
 
+### Frontend dev (Vite hot-reload)
+
+```bash
+cd apps/web
+corepack pnpm install
+corepack pnpm dev
+# http://localhost:5173 (proxies /api and /ws to localhost:8000)
+```
+
+### Tests
+
+```bash
+uv run pytest                              # backend
+cd apps/web && corepack pnpm test          # frontend
+```
+
 ## Repository structure
 
 - `apps/api/` — FastAPI service (entry point: `atlas_api.main:app`)
+- `apps/web/` — React 19 + Vite + TS frontend (sidebar, chat, RAG drawer, ingest modal)
 - `packages/atlas-core/` — shared library: config, models, providers, prompts, agent
 - `packages/atlas-knowledge/` — RAG: embeddings, vector store, ingestion, retrieval
 - `infra/docker-compose.yml` — local dev data layer
