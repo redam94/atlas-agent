@@ -65,4 +65,63 @@ describe("IngestModal", () => {
 
     expect(screen.getByRole("textbox", { name: /^markdown$/i })).toHaveValue("# hello");
   });
+
+  it("submits a URL and shows completion", async () => {
+    // Extend the fetch mock to handle the URL endpoint, returning a completed job.
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(input);
+      if (u.includes("/api/v1/knowledge/ingest/url")) {
+        return new Response(
+          JSON.stringify({
+            id: "job-url", user_id: "matt", project_id: "p", source_type: "url",
+            source_filename: "https://example.com/x", status: "pending",
+            node_ids: [], error: null,
+            created_at: new Date().toISOString(), completed_at: null,
+          }),
+          { status: 202, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u.includes("/api/v1/knowledge/jobs/job-url")) {
+        // Return completed on first poll (immediate)
+        return new Response(
+          JSON.stringify({
+            id: "job-url", user_id: "matt", project_id: "p", source_type: "url",
+            source_filename: "https://example.com/x", status: "completed",
+            node_ids: ["n1", "n2"], error: null,
+            created_at: new Date().toISOString(), completed_at: new Date().toISOString(),
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return originalFetch(input, init);
+    }) as unknown as typeof fetch;
+
+    const user = userEvent.setup();
+    render(<IngestModal open onOpenChange={() => {}} project_id="p" />, { wrapper });
+
+    await user.click(screen.getByRole("tab", { name: /url/i }));
+    const input = screen.getByRole("textbox", { name: "URL" });
+    await user.type(input, "https://example.com/x");
+    await user.click(screen.getByRole("button", { name: /ingest/i }));
+
+    await waitFor(() => expect(screen.getByText(/ingested 2 chunks/i)).toBeInTheDocument());
+  });
+
+  it("disables ingest when the URL is empty or malformed", async () => {
+    const user = userEvent.setup();
+    render(<IngestModal open onOpenChange={() => {}} project_id="p" />, { wrapper });
+
+    await user.click(screen.getByRole("tab", { name: /url/i }));
+    const ingestBtn = screen.getByRole("button", { name: /ingest/i });
+    expect(ingestBtn).toBeDisabled();
+
+    const input = screen.getByRole("textbox", { name: "URL" });
+    await user.type(input, "not a url");
+    expect(ingestBtn).toBeDisabled();
+
+    await user.clear(input);
+    await user.type(input, "https://example.com/article");
+    expect(ingestBtn).not.toBeDisabled();
+  });
 });

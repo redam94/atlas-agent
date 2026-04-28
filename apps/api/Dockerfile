@@ -16,6 +16,9 @@ COPY packages/atlas-knowledge packages/atlas-knowledge
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv && uv sync --all-packages
 
+# Install Chromium for Playwright URL ingestion (~200 MB; spec §5.1 accepts the tax).
+RUN uv run playwright install --with-deps chromium
+
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
