@@ -104,7 +104,6 @@ async def lifespan(app: FastAPI):
                     "graph.backfill.progress", batch=b, total=t,
                 ),
             )
-            await backfill_db.commit()
         log.info(
             "graph.backfill.done",
             documents=result.documents, chunks=result.chunks, batches=result.batches,

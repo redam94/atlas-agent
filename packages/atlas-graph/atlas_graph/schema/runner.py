@@ -14,6 +14,10 @@ if TYPE_CHECKING:
 log = structlog.get_logger("atlas.graph.migrations")
 
 _MIGRATION_FILE_RE = re.compile(r"^(\d{3})_[a-z0-9_]+\.cypher$")
+_DDL_RE = re.compile(
+    r"^(CREATE|DROP)\s+(\w+\s+)?(CONSTRAINT|INDEX)\b",
+    re.IGNORECASE,
+)
 
 
 class MigrationRunner:
@@ -43,17 +47,12 @@ class MigrationRunner:
                 continue
             cypher = path.read_text()
             # Split schema (DDL) from write statements since Neo4j doesn't allow them
-            # in the same transaction.
-            schema_keywords = (
-                "CREATE CONSTRAINT",
-                "CREATE INDEX",
-                "DROP CONSTRAINT",
-                "DROP INDEX",
-            )
+            # in the same transaction. Matches CREATE/DROP {CONSTRAINT|INDEX} including
+            # the qualifier forms (CREATE FULLTEXT INDEX, CREATE VECTOR INDEX, etc.).
             schema_stmts = []
             write_stmts = []
             for stmt in [s.strip() for s in cypher.split(";") if s.strip()]:
-                if any(kw in stmt.upper() for kw in schema_keywords):
+                if _DDL_RE.match(stmt):
                     schema_stmts.append(stmt)
                 else:
                     write_stmts.append(stmt)

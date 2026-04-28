@@ -137,3 +137,40 @@ async def test_run_pending_splits_multi_statement_files(tmp_path: Path):
     assert any("CREATE CONSTRAINT" in c for c in captured)
     assert any("CREATE INDEX" in c for c in captured)
     assert any("MERGE (m:Migration" in c for c in captured)
+
+
+@pytest.mark.asyncio
+async def test_run_pending_classifies_extended_index_types_as_ddl(tmp_path: Path):
+    """Verify FULLTEXT INDEX / VECTOR INDEX / etc. are routed through DDL transactions."""
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    (migrations_dir / "001_extended.cypher").write_text(
+        "CREATE FULLTEXT INDEX ft_idx IF NOT EXISTS FOR (n:Doc) ON EACH [n.text];\n"
+        "CREATE VECTOR INDEX vec_idx IF NOT EXISTS FOR (n:Chunk) ON (n.embedding);"
+    )
+
+    captured: list[str] = []
+
+    async def fake_execute_write(fn):
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append(cypher.strip())
+        tx.run = fake_run
+        await fn(tx)
+
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    session.execute_read = AsyncMock(return_value=[])
+    session.execute_write = fake_execute_write
+    driver = MagicMock()
+    driver.session = MagicMock(return_value=session)
+
+    runner = MigrationRunner(driver, migrations_dir)
+    applied = await runner.run_pending()
+    assert applied == ["001"]
+    # 2 DDL stmts (each in own tx) + 1 ledger MERGE = 3 captured
+    assert len(captured) == 3
+    assert any("CREATE FULLTEXT INDEX" in c for c in captured)
+    assert any("CREATE VECTOR INDEX" in c for c in captured)
+    assert any("MERGE (m:Migration" in c for c in captured)
