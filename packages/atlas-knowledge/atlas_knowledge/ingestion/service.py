@@ -42,7 +42,7 @@ class IngestionService:
         user_id: str,
         project_id: UUID,
         parsed: ParsedDocument,
-        source_type: str,  # "markdown" | "pdf"
+        source_type: str,  # "markdown" | "pdf" | "url"
         source_filename: str | None,
     ) -> UUID:
         """Run the pipeline. Returns the job_id. Always commits a job row,

@@ -5,12 +5,13 @@ from enum import StrEnum
 from uuid import UUID
 
 from atlas_core.models.base import AtlasModel, AtlasRequestModel
-from pydantic import Field, model_validator
+from pydantic import Field, HttpUrl, model_validator
 
 
 class SourceType(StrEnum):
     MARKDOWN = "markdown"
     PDF = "pdf"
+    URL = "url"
 
 
 class IngestionStatus(StrEnum):
@@ -37,6 +38,17 @@ class IngestRequest(AtlasRequestModel):
         if self.source_type is SourceType.MARKDOWN and not self.text:
             raise ValueError("markdown ingest requires non-empty `text`")
         return self
+
+
+class UrlIngestRequest(AtlasRequestModel):
+    """Payload for POST /api/v1/knowledge/ingest/url.
+
+    Pydantic v2 HttpUrl handles scheme + structural validation; the router
+    additionally runs validate_url() for the SSRF / private-IP guard.
+    """
+
+    project_id: UUID
+    url: HttpUrl
 
 
 class IngestionJob(AtlasModel):
