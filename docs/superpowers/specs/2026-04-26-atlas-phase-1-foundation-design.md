@@ -367,6 +367,8 @@ React 19, Vite, TypeScript, Tailwind v4, shadcn/ui, Zustand (global), React Quer
 - **Right drawer (toggleable)** — RAG context panel showing latest `RetrievalResult[]`: chunk text preview, source title, similarity score
 - **Inline tool-use cards** — collapsible cards rendered for any `chat.tool_use` / `chat.tool_result` events. Phase 1 will rarely emit these; the component is in place for Phase 3.
 
+(Plan 6 placed the model picker above the chat input bar instead — per-session selection feels more natural near the action.)
+
 ### State
 
 **Zustand global store:**
@@ -549,16 +551,30 @@ Phase 1 prioritizes covering the parts that are easy to break silently — the p
 ```
 atlas-agent/
 ├── apps/
-│   └── api/
-│       ├── pyproject.toml
-│       ├── main.py
-│       ├── deps.py                # FastAPI dependency providers
-│       ├── routers/
-│       │   ├── projects.py
-│       │   ├── knowledge.py
-│       │   ├── models.py
-│       │   └── ws.py
-│       └── tests/
+│   ├── api/
+│   │   ├── pyproject.toml
+│   │   ├── main.py
+│   │   ├── deps.py                # FastAPI dependency providers
+│   │   ├── routers/
+│   │   │   ├── projects.py
+│   │   │   ├── knowledge.py
+│   │   │   ├── models.py
+│   │   │   └── ws.py
+│   │   └── tests/
+│   └── web/
+│       ├── package.json
+│       ├── vite.config.ts
+│       ├── tsconfig.json
+│       ├── tailwind.config.ts
+│       ├── index.html
+│       └── src/
+│           ├── main.tsx
+│           ├── App.tsx
+│           ├── routes/
+│           ├── components/
+│           ├── hooks/
+│           ├── stores/
+│           └── lib/
 ├── packages/
 │   ├── atlas-core/
 │   │   ├── pyproject.toml
@@ -580,20 +596,6 @@ atlas-agent/
 │       │   ├── vector/
 │       │   └── retrieval/
 │       └── tests/
-├── frontend/
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── tsconfig.json
-│   ├── tailwind.config.ts
-│   ├── index.html
-│   └── src/
-│       ├── main.tsx
-│       ├── App.tsx
-│       ├── routes/
-│       ├── components/
-│       ├── hooks/
-│       ├── stores/
-│       └── lib/
 ├── infra/
 │   ├── docker-compose.yml
 │   ├── postgres/

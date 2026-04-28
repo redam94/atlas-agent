@@ -31,6 +31,37 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: atlas-api
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      ATLAS_DB__DATABASE_URL: postgresql://atlas:atlas@postgres:5432/atlas
+      ATLAS_DB__REDIS_URL: redis://redis:6379
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: atlas-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
 volumes:
   postgres_data:
   redis_data:

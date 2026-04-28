@@ -1,0 +1,18 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Editor / OS
+.DS_Store
+.vite/
+.cache/
+
+# Test/coverage
+coverage/
+*.local
+
+# Logs
+*.log

@@ -19,6 +19,7 @@ from atlas_api import __version__
 from atlas_api.routers import knowledge as knowledge_router
 from atlas_api.routers import models as models_router
 from atlas_api.routers import projects as projects_router
+from atlas_api.routers import sessions as sessions_router
 from atlas_api.ws import chat as ws_chat
 
 config = AtlasConfig()
@@ -101,6 +102,7 @@ app.include_router(projects_router.router, prefix="/api/v1")
 app.include_router(models_router.router, prefix="/api/v1")
 app.include_router(ws_chat.router, prefix="/api/v1")
 app.include_router(knowledge_router.router, prefix="/api/v1")
+app.include_router(sessions_router.router, prefix="/api/v1")
 
 
 @app.get("/health")
