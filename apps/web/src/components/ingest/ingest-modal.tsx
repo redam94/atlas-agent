@@ -8,23 +8,35 @@ import { Input } from "@/components/ui/input";
 import {
   useStartMarkdownIngest,
   useStartPdfIngest,
+  useStartUrlIngest,
   useIngestJob,
   type IngestionJob,
 } from "@/hooks/use-ingest-job";
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 export function IngestModal(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project_id: string;
 }) {
-  const [tab, setTab] = useState<"markdown" | "pdf">("markdown");
+  const [tab, setTab] = useState<"markdown" | "pdf" | "url">("markdown");
   const [markdown, setMarkdown] = useState("");
   const [filename, setFilename] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [url, setUrl] = useState("");
   const [activeJob, setActiveJob] = useState<IngestionJob | null>(null);
 
   const startMd = useStartMarkdownIngest();
   const startPdf = useStartPdfIngest();
+  const startUrl = useStartUrlIngest();
   const polled = useIngestJob(activeJob?.id);
   const job = polled.data ?? activeJob;
 
@@ -37,9 +49,13 @@ export function IngestModal(props: {
         source_filename: filename.trim() || undefined,
       });
       setActiveJob(j);
-    } else {
+    } else if (tab === "pdf") {
       if (!pdfFile) return;
       const j = await startPdf.mutateAsync({ project_id: props.project_id, file: pdfFile });
+      setActiveJob(j);
+    } else {
+      if (!isValidHttpUrl(url)) return;
+      const j = await startUrl.mutateAsync({ project_id: props.project_id, url });
       setActiveJob(j);
     }
   };
@@ -49,6 +65,7 @@ export function IngestModal(props: {
     setMarkdown("");
     setFilename("");
     setPdfFile(null);
+    setUrl("");
     setTab("markdown");
   };
 
@@ -76,6 +93,7 @@ export function IngestModal(props: {
             <TabsList>
               <TabsTrigger value="markdown">Markdown</TabsTrigger>
               <TabsTrigger value="pdf">PDF</TabsTrigger>
+              <TabsTrigger value="url">URL</TabsTrigger>
             </TabsList>
             <TabsContent value="markdown">
               <div className="space-y-3">
@@ -110,9 +128,36 @@ export function IngestModal(props: {
                 />
               </div>
             </TabsContent>
+            <TabsContent value="url">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="url-input">URL</Label>
+                  <Input
+                    id="url-input"
+                    type="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://example.com/article"
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    We render JavaScript and extract the article body.
+                  </p>
+                </div>
+              </div>
+            </TabsContent>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => props.onOpenChange(false)}>Cancel</Button>
-              <Button onClick={submit} disabled={startMd.isPending || startPdf.isPending}>
+              <Button
+                onClick={submit}
+                disabled={
+                  startMd.isPending ||
+                  startPdf.isPending ||
+                  startUrl.isPending ||
+                  (tab === "markdown" && !markdown.trim()) ||
+                  (tab === "pdf" && !pdfFile) ||
+                  (tab === "url" && !isValidHttpUrl(url))
+                }
+              >
                 Ingest
               </Button>
             </div>
