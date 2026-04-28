@@ -16,7 +16,9 @@ from pathlib import Path
 os.environ.setdefault(
     "ATLAS_DB__DATABASE_URL", "postgresql://atlas:atlas@localhost:5432/atlas_test"
 )
-os.environ.setdefault("ATLAS_GRAPH__PASSWORD", "test")
+os.environ.setdefault("ATLAS_GRAPH__URI", "bolt://localhost:7687")
+os.environ.setdefault("ATLAS_GRAPH__PASSWORD", "changeme")
+os.environ.setdefault("ATLAS_GRAPH__BACKFILL_ON_START", "false")
 os.environ.setdefault("ATLAS_ENVIRONMENT", "development")
 
 import pytest
