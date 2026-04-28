@@ -167,6 +167,34 @@ async def test_ingest_marks_job_failed_when_graph_writer_raises(
     assert nodes == [], f"expected empty knowledge_nodes table, got {len(nodes)} rows"
 
 
+@pytest.mark.asyncio
+async def test_ingest_empty_document_still_writes_graph_node(
+    vector_store, project_id, db_session
+):
+    """Empty document (no chunks) must still create a graph (:Document) node."""
+    graph_writer = AsyncMock(spec=GraphWriter)
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    # Empty string → chunker returns no chunks.
+    parsed = parse_markdown("", title="Empty")
+    job_id = await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.id == job_id
+    assert job.status == "completed"
+
+    # Graph writer was called with empty chunks list.
+    graph_writer.write_document_chunks.assert_awaited_once()
+    kwargs = graph_writer.write_document_chunks.await_args.kwargs
+    assert kwargs["chunks"] == []
+    assert kwargs["document_source_type"] == "markdown"
+
+
 def test_chunk_spec_adapter_satisfies_chunk_spec_like_protocol():
     """Drift protection: _ChunkSpecAdapter must structurally satisfy ChunkSpecLike."""
     adapter = _ChunkSpecAdapter(id=uuid4(), position=0, token_count=0, text_preview="")

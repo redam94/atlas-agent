@@ -1,8 +1,9 @@
 """One-shot backfill: walks Phase 1 Postgres rows into Neo4j.
 
 Idempotent via Cypher MERGE inside GraphStore.write_document_chunks.
-Writes a (:BackfillState {key:'phase1'}) node for progress visibility — not
-used for resume logic (re-running from scratch is safe and cheap).
+Progress is visible via the optional progress_cb callback. A future plan
+may add a (:BackfillState {key:'phase1'}) node for cross-process visibility,
+but Plan 2 does not yet write one — re-running from scratch is safe and cheap.
 """
 from __future__ import annotations
 
@@ -44,8 +45,8 @@ async def backfill_phase1(
 ) -> BackfillResult:
     """Walk all Postgres documents/chunks and write them to Neo4j.
 
-    Re-running this is safe (MERGE is idempotent). Updates a
-    (:BackfillState {key:'phase1'}) node after each batch.
+    Re-running this is safe (MERGE is idempotent). Progress is reported via the
+    optional ``progress_cb`` callback fired at batch boundaries.
     """
     started = datetime.now(UTC)
 

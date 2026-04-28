@@ -105,10 +105,21 @@ class IngestionService:
             raw_chunks = self._chunker.chunk(parsed.text)
             if not raw_chunks:
                 # Edge case: empty document. Job completes with just the doc node.
-                # NOTE: this path skips step 5.5, so the document exists in Postgres
-                # but NOT in Neo4j. Plan 4/5 retrieval should treat doc-without-chunks
-                # as a non-graph-indexed leaf; or this branch should call
-                # graph_writer.write_document_chunks(chunks=[]) explicitly.
+                # Write the (:Document) node to the graph (with chunks=[]) so the
+                # design invariant holds — every Postgres document has a graph
+                # counterpart. Cypher UNWIND $chunks/[]/$chunk_ids/[] is a no-op.
+                if self._graph_writer is not None:
+                    project_row = await db.get(ProjectORM, project_id)
+                    project_name = project_row.name if project_row else "Unknown"
+                    await self._graph_writer.write_document_chunks(
+                        project_id=project_id,
+                        project_name=project_name,
+                        document_id=doc_row.id,
+                        document_title=doc_row.title or "Untitled",
+                        document_source_type=source_type,
+                        document_metadata=dict(doc_row.metadata_ or {}),
+                        chunks=[],
+                    )
                 job.status = "completed"
                 job.completed_at = datetime.now(UTC)
                 job.node_ids = [str(doc_row.id)]
