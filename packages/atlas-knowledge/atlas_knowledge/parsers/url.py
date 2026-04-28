@@ -121,6 +121,14 @@ async def fetch_html(url: str, *, timeout_s: float = 30.0) -> str:
     Per-request browser: launches and closes one Chromium instance per call.
     Hard wall-clock timeout via asyncio.wait_for; soft networkidle wait so
     SPAs that never go idle still return after the DOM is ready.
+
+    SSRF caveat: validate_url is called by the router before this function and
+    only checks the *original* URL's resolved IP. Playwright follows HTTP 30x
+    redirects without re-validating the redirect target, so an attacker-
+    controlled server can redirect to a private IP that bypasses the guard.
+    Accepted trade-off for a single-user personal tool. If ATLAS is ever
+    deployed multi-user, add a `page.route()` interceptor here that aborts
+    requests targeting private/loopback addresses.
     """
     # Late import so the module imports cheaply when the API isn't ingesting.
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError

@@ -288,6 +288,8 @@ Before merging the PR: `docker compose up`, paste a real article URL into the ne
 - **SPA pages that never reach `networkidle`.** Mitigation: 5s soft cap on `networkidle`, fall back to current DOM content.
 - **JS-shell pages with no real article (paywalled or app-shell-only).** Trafilatura will return short / empty text; `parse_html` raises and the user sees a "could not extract content" message.
 - **Future deduplication.** Plan 1 always creates a new doc on re-ingest; the URL is in `metadata.source_url`, so a future plan can add upsert semantics with a single index + a service-level branch. No migration debt.
+- **SSRF via redirect chain.** `validate_url` checks the original URL's resolved IP, but Playwright follows HTTP 30x redirects without re-validating the target. An attacker-controlled server can redirect to a private IP (e.g. `192.168.1.1/admin`) and the response HTML reaches the user. Distinct from the DNS-rebinding TOCTOU (same hostname, different IP) — this is a different host that was never validated. Accepted trade-off for a single-user personal tool; if ATLAS is ever deployed multi-user, add a Playwright `page.route()` interceptor that aborts navigation to private/loopback addresses.
+- **DNS-rebinding TOCTOU.** `validate_url` resolves the host once before fetch; Playwright resolves again at connection time. A determined attacker controlling DNS can return public during validation and private during fetch. Accepted for single-user; multi-user deployment would need a connection-time IP check.
 
 ---
 
