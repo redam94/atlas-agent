@@ -5,7 +5,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
@@ -21,22 +21,19 @@ if TYPE_CHECKING:
 log = structlog.get_logger("atlas.graph.store")
 
 
-def _serialize_metadata(metadata: dict) -> dict[str, Any]:
-    """Flatten metadata to Neo4j-compatible primitive types.
+def _serialize_metadata(metadata: dict) -> str:
+    """JSON-encode the metadata dict for storage as a Neo4j string property.
 
-    Neo4j 5 node/relationship properties accept str, int, float, bool, and
-    homogeneous lists of those. Nested dicts and lists-of-dicts are JSON-encoded
-    as strings. Plain lists of primitives pass through unchanged.
+    Neo4j 5 node properties must be primitives or homogeneous lists of primitives;
+    maps are not allowed. We store the full metadata dict as a single JSON string
+    on the Document node. Readers (Plan 5 Knowledge Explorer) JSON-decode on
+    display. ``default=str`` handles non-JSON types like UUID/datetime by
+    coercing to str().
+
+    Inputs are expected to come from Postgres JSONB (str/int/float/bool/None/dict/list);
+    this function does not coerce bytes/tuple/set.
     """
-    out: dict[str, Any] = {}
-    for k, v in metadata.items():
-        if isinstance(v, dict) or (
-            isinstance(v, list) and any(isinstance(x, dict) for x in v)
-        ):
-            out[k] = json.dumps(v, default=str)
-        else:
-            out[k] = v
-    return out
+    return json.dumps(metadata, default=str)
 
 
 class GraphStore:

@@ -1,6 +1,7 @@
 """Unit tests for GraphStore — mocked driver, no Neo4j."""
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -176,8 +177,8 @@ async def test_write_document_chunks_passes_str_uuids_for_ids():
 
 
 @pytest.mark.asyncio
-async def test_write_document_chunks_serializes_nested_metadata():
-    """Neo4j 5 properties don't accept nested dicts. Nested values get JSON-encoded."""
+async def test_write_document_chunks_serializes_metadata_as_json_string():
+    """Neo4j 5 properties don't accept maps. Metadata becomes a single JSON string."""
     driver = MagicMock()
     session = AsyncMock()
     session.__aenter__.return_value = session
@@ -196,23 +197,22 @@ async def test_write_document_chunks_serializes_nested_metadata():
     session.execute_write = fake_execute_write
 
     store = GraphStore(driver)
+    metadata = {
+        "scalar": "ok",
+        "nested": {"a": 1, "b": [1, 2]},
+        "list_of_dicts": [{"k": "v"}, {"k": "v2"}],
+    }
     await store.write_document_chunks(
         project_id=uuid4(),
         project_name="P",
         document_id=uuid4(),
         document_title="t",
         document_source_type="markdown",
-        document_metadata={
-            "scalar": "ok",
-            "nested": {"a": 1, "b": [1, 2]},
-            "list_of_dicts": [{"k": "v"}, {"k": "v2"}],
-        },
+        document_metadata=metadata,
         chunks=[],
     )
     document_call_meta = captured[1][1]["metadata"]
-    assert document_call_meta["scalar"] == "ok"
-    # Nested dict and list-of-dict become JSON strings.
-    assert isinstance(document_call_meta["nested"], str)
-    assert isinstance(document_call_meta["list_of_dicts"], str)
-    import json
-    assert json.loads(document_call_meta["nested"]) == {"a": 1, "b": [1, 2]}
+    # The whole metadata dict round-trips as a single JSON string.
+    assert isinstance(document_call_meta, str)
+    decoded = json.loads(document_call_meta)
+    assert decoded == metadata
