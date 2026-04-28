@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from atlas_knowledge.parsers.url import parse_html, validate_url
+from atlas_knowledge.parsers.url import (
+    _MAX_HTML_BYTES,
+    _check_html_size,
+    parse_html,
+    validate_url,
+)
 
 
 def _fake_getaddrinfo(host_to_ip: dict[str, str]):
@@ -145,3 +150,24 @@ def test_parse_html_rejects_garbage_input():
     # it as ValueError (the "extracted is None" branch), not AttributeError.
     with pytest.raises(ValueError, match="no extractable content"):
         parse_html("not html at all just random words", "https://example.com/")
+
+
+def test_check_html_size_accepts_under_cap():
+    # Anything well under the cap passes silently.
+    _check_html_size("<html>" + ("x" * 1024) + "</html>")
+
+
+def test_check_html_size_rejects_over_cap():
+    oversized = "x" * (_MAX_HTML_BYTES + 1)
+    with pytest.raises(ValueError, match="exceeds size cap"):
+        _check_html_size(oversized)
+
+
+def test_check_html_size_counts_utf8_bytes_not_characters():
+    # A 4-byte-per-char emoji string under the char cap but over the byte cap
+    # should be rejected. _MAX_HTML_BYTES // 4 + 1 emojis = byte_count > cap.
+    char_count = _MAX_HTML_BYTES // 4 + 1
+    payload = "🎉" * char_count  # 4 UTF-8 bytes each
+    assert len(payload) < _MAX_HTML_BYTES  # fewer characters than the byte cap
+    with pytest.raises(ValueError, match="exceeds size cap"):
+        _check_html_size(payload)

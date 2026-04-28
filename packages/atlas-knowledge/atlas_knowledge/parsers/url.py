@@ -22,6 +22,7 @@ from atlas_knowledge.parsers.markdown import ParsedDocument
 _ALLOWED_SCHEMES = {"http", "https"}
 _MIN_EXTRACT_CHARS = 100
 _NETWORKIDLE_TIMEOUT_MS = 5000
+_MAX_HTML_BYTES = 10 * 1024 * 1024  # 10 MB; typical articles are <1 MB
 
 
 def validate_url(url: str) -> str:
@@ -115,6 +116,19 @@ def parse_html(html: str, url: str) -> ParsedDocument:
     )
 
 
+def _check_html_size(html: str) -> None:
+    """Raise ValueError if the rendered HTML exceeds the size cap.
+
+    A fast server could push hundreds of MB inside the 30 s wall-clock budget;
+    this bounds caller-side memory. The error surfaces as a 502 at the router.
+    """
+    if len(html.encode("utf-8", errors="replace")) > _MAX_HTML_BYTES:
+        raise ValueError(
+            f"rendered html exceeds size cap "
+            f"({_MAX_HTML_BYTES // (1024 * 1024)} MB)"
+        )
+
+
 async def fetch_html(url: str, *, timeout_s: float = 30.0) -> str:
     """Render `url` with headless Chromium and return the rendered HTML.
 
@@ -152,7 +166,9 @@ async def fetch_html(url: str, *, timeout_s: float = 30.0) -> str:
                     await page.wait_for_load_state(
                         "networkidle", timeout=_NETWORKIDLE_TIMEOUT_MS
                     )
-                return await page.content()
+                html = await page.content()
+                _check_html_size(html)
+                return html
             finally:
                 await browser.close()
 
