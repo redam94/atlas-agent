@@ -8,6 +8,7 @@ import { MessageList } from "./message-list";
 import { Composer } from "./composer";
 import { Button } from "@/components/ui/button";
 import { RagDrawer } from "@/components/rag/rag-drawer";
+import { IngestModal } from "@/components/ingest/ingest-modal";
 
 export function ChatPanel({ project_id }: { project_id: string }) {
   const { data: project, isLoading } = useProject(project_id);
@@ -61,15 +62,7 @@ export function ChatPanel({ project_id }: { project_id: string }) {
         onSend={chat.send}
         onOpenIngest={() => setIngestOpen(true)}
       />
-      {/* IngestModal mounts here in Task G2; for now, the Add button is a no-op. */}
-      {ingestOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setIngestOpen(false)}
-        >
-          <div className="rounded-md bg-background p-6 text-sm">Ingest UI lands in Task G2.</div>
-        </div>
-      )}
+      <IngestModal open={ingestOpen} onOpenChange={setIngestOpen} project_id={project_id} />
       <RagDrawer open={ragOpen} citations={chat.rag_context} onOpenChange={setRagOpen} />
     </div>
   );
