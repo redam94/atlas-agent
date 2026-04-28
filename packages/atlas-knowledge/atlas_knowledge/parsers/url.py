@@ -10,9 +10,15 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
+import trafilatura
+
+from atlas_knowledge.parsers.markdown import ParsedDocument
+
 _ALLOWED_SCHEMES = {"http", "https"}
+_MIN_EXTRACT_CHARS = 100
 
 
 def validate_url(url: str) -> str:
@@ -48,3 +54,57 @@ def validate_url(url: str) -> str:
                 f"url {url!r} resolves to disallowed address {ip_str!r}"
             )
     return url
+
+
+def parse_html(html: str, url: str) -> ParsedDocument:
+    """Extract the main article body + metadata from rendered HTML.
+
+    Raises ValueError if Trafilatura returns no usable content.
+    """
+    extracted = trafilatura.bare_extraction(
+        html,
+        output_format="markdown",
+        include_tables=True,
+        include_comments=False,
+        include_links=False,
+        with_metadata=True,
+    )
+    if extracted is None:
+        raise ValueError("no extractable content from URL")
+
+    # bare_extraction returns either a Document dataclass (newer trafilatura)
+    # or a dict (older). Normalize to attribute access.
+    def _get(name: str) -> str | None:
+        if hasattr(extracted, name):
+            v = getattr(extracted, name)
+        elif isinstance(extracted, dict):
+            v = extracted.get(name)
+        else:
+            v = None
+        return v if isinstance(v, str) and v.strip() else None
+
+    text = _get("text") or _get("raw_text") or ""
+    if len(text) < _MIN_EXTRACT_CHARS:
+        raise ValueError("no extractable content (text too short)")
+
+    title = _get("title") or url
+    metadata: dict[str, object] = {
+        "source_url": url,
+        "fetched_at": datetime.now(UTC).isoformat(),
+    }
+    for key, src in (
+        ("author", "author"),
+        ("published_date", "date"),
+        ("site_name", "sitename"),
+        ("language", "language"),
+    ):
+        val = _get(src)
+        if val is not None:
+            metadata[key] = val
+
+    return ParsedDocument(
+        text=text,
+        title=title,
+        source_type="url",
+        metadata=metadata,
+    )

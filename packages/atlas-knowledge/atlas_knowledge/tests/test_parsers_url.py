@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import socket
+from pathlib import Path
 
 import pytest
 
-from atlas_knowledge.parsers.url import validate_url
+from atlas_knowledge.parsers.url import parse_html, validate_url
 
 
 def _fake_getaddrinfo(host_to_ip: dict[str, str]):
@@ -43,6 +44,7 @@ def test_validate_url_accepts_public_http_urls(monkeypatch, url):
         "javascript:alert(1)",
         "://no-scheme",
         "",
+        "https:///path",   # valid scheme, empty host → "url has no host"
     ],
 )
 def test_validate_url_rejects_non_http_or_malformed(url):
@@ -93,3 +95,46 @@ def test_validate_url_rejects_unresolvable_host(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", fake)
     with pytest.raises(ValueError):
         validate_url("https://does-not-resolve.example/")
+
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _read_fixture(name: str) -> str:
+    return (_FIXTURES / name).read_text(encoding="utf-8")
+
+
+def test_parse_html_extracts_basic_article():
+    html = _read_fixture("article_basic.html")
+    doc = parse_html(html, "https://blog.example.com/geo-lift")
+    assert doc.source_type == "url"
+    assert "Geo-Lift" in doc.title
+    assert "Geo-lift studies measure incrementality" in doc.text
+    assert doc.metadata["source_url"] == "https://blog.example.com/geo-lift"
+    assert "fetched_at" in doc.metadata
+    # Author/date/site_name are best-effort; assert they round-trip when present.
+    assert doc.metadata.get("author") in ("Jane Doe", None)
+
+
+def test_parse_html_includes_table_text():
+    html = _read_fixture("article_with_table.html")
+    doc = parse_html(html, "https://blog.example.com/q3")
+    # Trafilatura output_format=markdown emits table cells as text — both region
+    # names and CAC values should appear.
+    assert "NA" in doc.text and "$42" in doc.text
+    assert "EU" in doc.text and "$51" in doc.text
+
+
+def test_parse_html_rejects_empty_or_tiny_content():
+    html = _read_fixture("spa_shell.html")
+    with pytest.raises(ValueError) as excinfo:
+        parse_html(html, "https://app.example.com/")
+    assert "no extractable content" in str(excinfo.value).lower()
+
+
+def test_parse_html_falls_back_to_url_when_no_title(monkeypatch):
+    # A page with no <title> and no metadata title should fall back to the URL.
+    html = "<html><body><article><p>" + ("alpha beta " * 80) + "</p></article></body></html>"
+    doc = parse_html(html, "https://no-title.example.com/path")
+    assert doc.title == "https://no-title.example.com/path"
+    assert "alpha beta" in doc.text
