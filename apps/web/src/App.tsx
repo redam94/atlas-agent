@@ -1,10 +1,15 @@
-import { Button } from "@/components/ui/button";
+import { Outlet } from "react-router-dom";
 
 export function App() {
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">ATLAS</h1>
-      <Button>Hello</Button>
+    <div className="flex h-screen">
+      <aside className="w-64 border-r bg-muted/30 p-4">
+        <div className="font-semibold">ATLAS</div>
+        {/* Sidebar will be replaced in Task C2. */}
+      </aside>
+      <main className="flex-1 overflow-hidden">
+        <Outlet />
+      </main>
     </div>
   );
 }
