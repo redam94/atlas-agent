@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 from atlas_core.config import AtlasConfig
 from atlas_core.db.session import session_scope
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
+from atlas_graph import GraphStore
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.retrieval.retriever import Retriever
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,3 +50,7 @@ def get_ingestion_service(connection: HTTPConnection) -> IngestionService:
 
 def get_retriever(connection: HTTPConnection) -> Retriever:
     return connection.app.state.retriever
+
+
+def get_graph_store(connection: HTTPConnection) -> GraphStore:
+    return connection.app.state.graph_store
