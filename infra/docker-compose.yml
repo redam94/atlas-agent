@@ -31,6 +31,28 @@ services:
       timeout: 5s
       retries: 10
 
+  neo4j:
+    image: neo4j:5-community
+    container_name: atlas-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "neo4j/${ATLAS_GRAPH__PASSWORD}"
+      NEO4J_PLUGINS: '["graph-data-science"]'
+      NEO4J_dbms_memory_heap_max__size: "2G"
+      NEO4J_dbms_memory_pagecache_size: "512M"
+      NEO4J_dbms_security_procedures_unrestricted: "gds.*"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   api:
     build:
       context: ..
@@ -41,12 +63,15 @@ services:
     environment:
       ATLAS_DB__DATABASE_URL: postgresql://atlas:atlas@postgres:5432/atlas
       ATLAS_DB__REDIS_URL: redis://redis:6379
+      ATLAS_GRAPH__URI: bolt://neo4j:7687
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -65,3 +90,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  neo4j_data:
+  neo4j_logs:
