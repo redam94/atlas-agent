@@ -27,4 +27,20 @@ describe("MarkdownRenderer", () => {
     // When skipHtml is enabled, HTML tags are skipped and text after them may not render
     // The key assertion is that the script tag does NOT execute
   });
+
+  it("renders inline LaTeX with KaTeX", () => {
+    const md = "Solve $x^2 + 1 = 0$ for x.";
+    render(<MarkdownRenderer source={md} />);
+    // KaTeX renders math into a <span class="katex"> wrapper. Look for the class.
+    const katexNode = document.querySelector(".katex");
+    expect(katexNode).not.toBeNull();
+  });
+
+  it("renders block LaTeX with KaTeX", () => {
+    const md = "$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$";
+    render(<MarkdownRenderer source={md} />);
+    // Block math is rendered as a span with class="katex-display"
+    const katexBlock = document.querySelector(".katex-display");
+    expect(katexBlock).not.toBeNull();
+  });
 });
