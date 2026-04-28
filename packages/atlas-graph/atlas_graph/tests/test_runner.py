@@ -35,7 +35,8 @@ async def test_run_pending_applies_unapplied_files_in_order(tmp_path: Path):
 
     applied = await runner.run_pending()
     assert applied == ["001", "002"]
-    assert session.execute_write.await_count == 2  # one execute_write per migration
+    # Schema and write statements are in separate transactions; 2 migrations × 2 = 4 calls.
+    assert session.execute_write.await_count == 4
 
 
 @pytest.mark.asyncio
@@ -50,7 +51,8 @@ async def test_run_pending_skips_already_applied(tmp_path: Path):
 
     applied = await runner.run_pending()
     assert applied == ["002"]
-    assert session.execute_write.await_count == 1
+    # Schema and write statements are in separate transactions (1 migration × 2 = 2 calls).
+    assert session.execute_write.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -96,6 +98,7 @@ async def test_run_pending_handles_gap_in_id_sequence(tmp_path: Path):
 
     applied = await runner.run_pending()
     assert applied == ["001", "003"]
+    # These migrations have no schema statements, so only 1 call per migration.
     assert session.execute_write.await_count == 2
 
 

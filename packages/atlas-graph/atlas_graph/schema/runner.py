@@ -42,8 +42,33 @@ class MigrationRunner:
             if mid in applied:
                 continue
             cypher = path.read_text()
+            # Split schema (DDL) from write statements since Neo4j doesn't allow them
+            # in the same transaction.
+            schema_keywords = (
+                "CREATE CONSTRAINT",
+                "CREATE INDEX",
+                "DROP CONSTRAINT",
+                "DROP INDEX",
+            )
+            schema_stmts = []
+            write_stmts = []
+            for stmt in [s.strip() for s in cypher.split(";") if s.strip()]:
+                if any(kw in stmt.upper() for kw in schema_keywords):
+                    schema_stmts.append(stmt)
+                else:
+                    write_stmts.append(stmt)
+
+            # Execute schema DDL in its own transaction.
+            if schema_stmts:
+                async with self._driver.session() as s:
+                    for stmt in schema_stmts:
+                        await s.execute_write(
+                            lambda tx, s=stmt: tx.run(s)
+                        )
+
+            # Execute write statements and migration ledger in a separate transaction.
             async with self._driver.session() as s:
-                await s.execute_write(self._make_apply(mid, cypher))
+                await s.execute_write(self._make_apply(mid, write_stmts))
             log.info("graph.migration.applied", id=mid, file=path.name)
             newly_applied.append(mid)
         return newly_applied
@@ -59,10 +84,12 @@ class MigrationRunner:
         return [r async for r in result]
 
     @staticmethod
-    def _make_apply(mid: str, cypher: str):
+    def _make_apply(mid: str, write_stmts: list[str]):
         async def _apply(tx: AsyncTransaction) -> None:
-            for stmt in [s.strip() for s in cypher.split(";") if s.strip()]:
+            # Execute write statements (data manipulation only, no DDL).
+            for stmt in write_stmts:
                 await tx.run(stmt)
+            # Record migration in ledger.
             await tx.run(
                 "MERGE (m:Migration {id: $id}) "
                 "ON CREATE SET m.applied_at = datetime()",
