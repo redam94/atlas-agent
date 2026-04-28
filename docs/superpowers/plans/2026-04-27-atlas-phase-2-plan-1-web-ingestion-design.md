@@ -253,7 +253,7 @@ Cancellation / interactive retry are out of scope. The existing `IngestModal` "R
 - Default `uv run pytest` skips it; `uv run pytest -m integration` runs it.
 
 ### 6.3 Router (mocked parser)
-- `apps/api/atlas_api/tests/test_knowledge_router.py` (extend): patches `atlas_knowledge.parsers.url.parse_url` to return a fixture `ParsedDocument`. Asserts:
+- `apps/api/atlas_api/tests/test_knowledge_router.py` (extend): patches `atlas_api.routers.knowledge.parse_url` (the router's namespace, *not* the origin `atlas_knowledge.parsers.url.parse_url` — `unittest.mock.patch` must target the name where it is looked up) to return a fixture `ParsedDocument`. Asserts:
   - 202 + IngestionJob on happy path; chunks land in vector store + DB.
   - 400 on `validate_url` rejection (e.g. `http://10.0.0.1`).
   - 422 on missing fields / non-URL body.

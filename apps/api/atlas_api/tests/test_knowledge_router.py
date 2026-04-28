@@ -131,6 +131,8 @@ async def test_ingest_url_happy_path(app_with_knowledge_overrides, db_session):
     body = resp.json()
     assert body["status"] == "completed"
     assert body["source_type"] == "url"
+    # Pydantic HttpUrl appends a trailing slash to bare-host URLs; path-bearing
+    # URLs like this one round-trip cleanly. Keep this URL or update the assertion.
     assert body["source_filename"] == "https://blog.example.com/geo-lift"
 
 
