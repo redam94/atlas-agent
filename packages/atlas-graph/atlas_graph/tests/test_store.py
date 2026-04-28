@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 from neo4j.exceptions import ServiceUnavailable, TransientError
 
 from atlas_graph.errors import GraphUnavailableError
+from atlas_graph.protocols import ChunkSpec
 from atlas_graph.store import GraphStore
 
 
@@ -81,3 +83,136 @@ async def test_with_retry_raises_graph_unavailable_after_exhausting(monkeypatch)
     assert "neo4j unavailable" in str(excinfo.value).lower()
     assert isinstance(excinfo.value.__cause__, ServiceUnavailable)
     assert session.execute_write.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_write_document_chunks_runs_5_cypher_statements_in_one_tx():
+    """Captures the (cypher, params) sequence executed inside the write tx."""
+    driver = MagicMock()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    driver.session = MagicMock(return_value=session)
+
+    captured: list[tuple[str, dict]] = []
+
+    async def fake_execute_write(fn):
+        # The fn the store passes to execute_write expects an AsyncTransaction.
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append((cypher, params))
+        tx.run = fake_run
+        await fn(tx)
+
+    session.execute_write = fake_execute_write
+
+    store = GraphStore(driver)
+    pid = uuid4()
+    did = uuid4()
+    chunks = [
+        ChunkSpec(id=uuid4(), position=0, token_count=128, text_preview="alpha"),
+        ChunkSpec(id=uuid4(), position=1, token_count=64, text_preview="beta"),
+    ]
+    await store.write_document_chunks(
+        project_id=pid,
+        project_name="P",
+        document_id=did,
+        document_title="Doc One",
+        document_source_type="markdown",
+        document_metadata={"author": "matt"},
+        chunks=chunks,
+    )
+
+    assert len(captured) == 5
+    cyphers = [c for c, _ in captured]
+    assert "MERGE (p:Project" in cyphers[0]
+    assert "MERGE (d:Document" in cyphers[1]
+    assert "(d)-[:PART_OF]->(p)" in cyphers[2]
+    assert "MERGE (ch:Chunk" in cyphers[3]
+    assert "(c)-[:BELONGS_TO]->(d)" in cyphers[4]
+
+
+@pytest.mark.asyncio
+async def test_write_document_chunks_passes_str_uuids_for_ids():
+    driver = MagicMock()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    driver.session = MagicMock(return_value=session)
+
+    captured: list[tuple[str, dict]] = []
+
+    async def fake_execute_write(fn):
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append((cypher, params))
+        tx.run = fake_run
+        await fn(tx)
+
+    session.execute_write = fake_execute_write
+
+    store = GraphStore(driver)
+    pid = uuid4()
+    did = uuid4()
+    cid = uuid4()
+    await store.write_document_chunks(
+        project_id=pid,
+        project_name="P",
+        document_id=did,
+        document_title="t",
+        document_source_type="markdown",
+        document_metadata={},
+        chunks=[ChunkSpec(id=cid, position=0, token_count=1, text_preview="x")],
+    )
+    # All id parameters are stringified UUIDs (Neo4j stores them as strings).
+    project_call = captured[0][1]
+    document_call = captured[1][1]
+    chunk_unwind_call = captured[3][1]
+    assert project_call["project_id"] == str(pid)
+    assert document_call["id"] == str(did)
+    assert chunk_unwind_call["chunks"][0]["id"] == str(cid)
+    assert chunk_unwind_call["project_id"] == str(pid)
+    assert chunk_unwind_call["document_id"] == str(did)
+
+
+@pytest.mark.asyncio
+async def test_write_document_chunks_serializes_nested_metadata():
+    """Neo4j 5 properties don't accept nested dicts. Nested values get JSON-encoded."""
+    driver = MagicMock()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    driver.session = MagicMock(return_value=session)
+
+    captured: list[tuple[str, dict]] = []
+
+    async def fake_execute_write(fn):
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append((cypher, params))
+        tx.run = fake_run
+        await fn(tx)
+
+    session.execute_write = fake_execute_write
+
+    store = GraphStore(driver)
+    await store.write_document_chunks(
+        project_id=uuid4(),
+        project_name="P",
+        document_id=uuid4(),
+        document_title="t",
+        document_source_type="markdown",
+        document_metadata={
+            "scalar": "ok",
+            "nested": {"a": 1, "b": [1, 2]},
+            "list_of_dicts": [{"k": "v"}, {"k": "v2"}],
+        },
+        chunks=[],
+    )
+    document_call_meta = captured[1][1]["metadata"]
+    assert document_call_meta["scalar"] == "ok"
+    # Nested dict and list-of-dict become JSON strings.
+    assert isinstance(document_call_meta["nested"], str)
+    assert isinstance(document_call_meta["list_of_dicts"], str)
+    import json
+    assert json.loads(document_call_meta["nested"]) == {"a": 1, "b": [1, 2]}

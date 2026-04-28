@@ -2,20 +2,41 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+import json
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import structlog
 from neo4j.exceptions import ServiceUnavailable, TransientError
 
 from atlas_graph.errors import GraphUnavailableError
+from atlas_graph.protocols import ChunkSpec
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
     from neo4j._async.driver import AsyncTransaction
 
 log = structlog.get_logger("atlas.graph.store")
+
+
+def _serialize_metadata(metadata: dict) -> dict[str, Any]:
+    """Flatten metadata to Neo4j-compatible primitive types.
+
+    Neo4j 5 node/relationship properties accept str, int, float, bool, and
+    homogeneous lists of those. Nested dicts and lists-of-dicts are JSON-encoded
+    as strings. Plain lists of primitives pass through unchanged.
+    """
+    out: dict[str, Any] = {}
+    for k, v in metadata.items():
+        if isinstance(v, dict) or (
+            isinstance(v, list) and any(isinstance(x, dict) for x in v)
+        ):
+            out[k] = json.dumps(v, default=str)
+        else:
+            out[k] = v
+    return out
 
 
 class GraphStore:
@@ -60,6 +81,72 @@ class GraphStore:
                 log.warning("graph.retry", attempt=attempt, error=str(e))
                 await asyncio.sleep(delay)
                 delay *= 2
+
+    async def write_document_chunks(
+        self,
+        *,
+        project_id: UUID,
+        project_name: str,
+        document_id: UUID,
+        document_title: str,
+        document_source_type: str,
+        document_metadata: dict,
+        chunks: Sequence[ChunkSpec],
+    ) -> None:
+        """Write Document + Chunk nodes + structural edges in one tx.
+
+        All MERGE — idempotent. Property values for nested dicts in
+        ``document_metadata`` are JSON-encoded as strings (Neo4j 5
+        property-type constraint).
+        """
+        meta = _serialize_metadata(document_metadata)
+        chunk_params = [c.to_param() for c in chunks]
+        chunk_ids = [str(c.id) for c in chunks]
+
+        async def _do(tx: AsyncTransaction) -> None:
+            await tx.run(
+                "MERGE (p:Project {id: $project_id}) "
+                "ON CREATE SET p.name = $name "
+                "ON MATCH SET p.name = coalesce(p.name, $name)",
+                project_id=str(project_id),
+                name=project_name,
+            )
+            await tx.run(
+                "MERGE (d:Document {id: $id}) "
+                "SET d.project_id = $project_id, d.title = $title, "
+                "    d.source_type = $source_type, d.metadata = $metadata",
+                id=str(document_id),
+                project_id=str(project_id),
+                title=document_title,
+                source_type=document_source_type,
+                metadata=meta,
+            )
+            await tx.run(
+                "MATCH (d:Document {id: $document_id}), (p:Project {id: $project_id}) "
+                "MERGE (d)-[:PART_OF]->(p)",
+                document_id=str(document_id),
+                project_id=str(project_id),
+            )
+            await tx.run(
+                "UNWIND $chunks AS c "
+                "MERGE (ch:Chunk {id: c.id}) "
+                "SET ch.project_id = $project_id, ch.parent_id = $document_id, "
+                "    ch.position = c.position, ch.token_count = c.token_count, "
+                "    ch.text_preview = c.text_preview",
+                chunks=chunk_params,
+                project_id=str(project_id),
+                document_id=str(document_id),
+            )
+            await tx.run(
+                "MATCH (d:Document {id: $document_id}) "
+                "UNWIND $chunk_ids AS cid "
+                "MATCH (c:Chunk {id: cid}) "
+                "MERGE (c)-[:BELONGS_TO]->(d)",
+                document_id=str(document_id),
+                chunk_ids=chunk_ids,
+            )
+
+        await self._with_retry(_do)
 
     @asynccontextmanager
     async def _session(self):
