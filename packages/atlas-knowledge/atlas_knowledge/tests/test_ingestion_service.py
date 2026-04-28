@@ -1,10 +1,13 @@
 """Integration test for IngestionService — uses FakeEmbedder + tmp Chroma."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from sqlalchemy import select
 
 from atlas_knowledge.embeddings import FakeEmbedder
+from atlas_knowledge.ingestion.protocols import GraphWriter
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.parsers.markdown import parse_markdown
 from atlas_knowledge.vector.chroma import ChromaVectorStore
@@ -85,3 +88,76 @@ async def test_ingest_failure_marks_job_failed(service, project_id, db_session):
     assert job.id == job_id
     assert job.status == "failed"
     assert "boom" in (job.error or "")
+
+
+@pytest.mark.asyncio
+async def test_ingest_does_not_call_graph_writer_when_none(
+    service, project_id, db_session
+):
+    """Default constructor leaves graph_writer=None — existing behavior."""
+    parsed = parse_markdown("# Title\n\n" + ("body " * 100))
+    job_id = await service.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.id == job_id
+    assert job.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_ingest_calls_graph_writer_when_supplied(
+    vector_store, project_id, db_session
+):
+    graph_writer = AsyncMock(spec=GraphWriter)
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# Title\n\n" + ("body " * 100))
+    job_id = await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.id == job_id
+    assert job.status == "completed"
+    graph_writer.write_document_chunks.assert_awaited_once()
+    kwargs = graph_writer.write_document_chunks.await_args.kwargs
+    assert kwargs["project_id"] == project_id
+    assert kwargs["project_name"] == "P"
+    assert kwargs["document_source_type"] == "markdown"
+    assert len(kwargs["chunks"]) >= 1
+    # ChunkSpecLike duck-type: each item has the required attributes + to_param().
+    for c in kwargs["chunks"]:
+        assert hasattr(c, "id")
+        assert hasattr(c, "position")
+        assert hasattr(c, "token_count")
+        assert hasattr(c, "text_preview")
+        param = c.to_param()
+        assert "id" in param
+        assert "position" in param
+        assert "token_count" in param
+        assert "text_preview" in param
+
+
+@pytest.mark.asyncio
+async def test_ingest_marks_job_failed_when_graph_writer_raises(
+    vector_store, project_id, db_session
+):
+    graph_writer = AsyncMock(spec=GraphWriter)
+    graph_writer.write_document_chunks.side_effect = RuntimeError("graph down")
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# Title\n\n" + ("body " * 100))
+    await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.status == "failed"
+    assert "graph down" in job.error

@@ -7,20 +7,44 @@ chooses the parser based on content type.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import structlog
-from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM
+from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atlas_knowledge.chunking.semantic import SemanticChunker
 from atlas_knowledge.embeddings.service import EmbeddingService
+from atlas_knowledge.ingestion.protocols import GraphWriter
 from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
 from atlas_knowledge.parsers.markdown import ParsedDocument
 from atlas_knowledge.vector.store import VectorStore
 
 log = structlog.get_logger("atlas.knowledge.ingest")
+
+
+@dataclass(frozen=True)
+class _ChunkSpecAdapter:
+    """Duck-typed match for atlas_graph.protocols.ChunkSpec.
+
+    atlas-knowledge does NOT import atlas-graph; we satisfy the GraphWriter
+    Protocol structurally.
+    """
+
+    id: UUID
+    position: int
+    token_count: int
+    text_preview: str
+
+    def to_param(self) -> dict[str, object]:
+        return {
+            "id": str(self.id),
+            "position": self.position,
+            "token_count": self.token_count,
+            "text_preview": self.text_preview,
+        }
 
 
 class IngestionService:
@@ -30,10 +54,12 @@ class IngestionService:
         vector_store: VectorStore,
         *,
         chunker: SemanticChunker | None = None,
+        graph_writer: GraphWriter | None = None,
     ) -> None:
         self._embedder = embedder
         self._vector_store = vector_store
         self._chunker = chunker or SemanticChunker(target_tokens=512, overlap_tokens=128)
+        self._graph_writer = graph_writer
 
     async def ingest(
         self,
@@ -121,6 +147,28 @@ class IngestionService:
             for row in chunk_rows:
                 row.embedding_id = str(row.id)
             await db.flush()
+
+            # 5.5 Write to graph if a writer is configured.
+            if self._graph_writer is not None:
+                project_row = await db.get(ProjectORM, project_id)
+                project_name = project_row.name if project_row else "Unknown"
+                await self._graph_writer.write_document_chunks(
+                    project_id=project_id,
+                    project_name=project_name,
+                    document_id=doc_row.id,
+                    document_title=doc_row.title or "Untitled",
+                    document_source_type=source_type,
+                    document_metadata=dict(doc_row.metadata_ or {}),
+                    chunks=[
+                        _ChunkSpecAdapter(
+                            id=r.id,
+                            position=int((r.metadata_ or {}).get("index", 0)),
+                            token_count=int((r.metadata_ or {}).get("token_count", 0)),
+                            text_preview=r.text[:200],
+                        )
+                        for r in chunk_rows
+                    ],
+                )
 
             # 6. Mark job complete.
             job.status = "completed"
