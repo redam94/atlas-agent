@@ -290,6 +290,34 @@ async def get_knowledge_graph(
                 detail=f"unknown node_types: {sorted(unknown)}",
             )
 
+    # Search mode (highest priority — q wins).
+    if q:
+        cap = limit if limit is not None else 50
+        cap = min(cap, 200)
+        retrieval = await retriever.retrieve(
+            RetrievalQuery(project_id=project_id, text=q, top_k=10)
+        )
+        chunk_hits = [c.chunk.id for c in retrieval.chunks]
+        if not chunk_hits:
+            return GraphResponse(
+                nodes=[],
+                edges=[],
+                meta=GraphMeta(mode="search", truncated=False, hit_node_ids=[]),
+            )
+        nodes_raw, edges_raw = await graph_store.fetch_subgraph_by_seeds(
+            project_id=project_id,
+            seed_ids=chunk_hits,
+            neighbors_per_seed=25,
+        )
+        return _build_graph_response(
+            mode="search",
+            nodes_raw=nodes_raw,
+            edges_raw=edges_raw,
+            cap=cap,
+            types_filter=types_filter,
+            hit_node_ids=chunk_hits,
+        )
+
     # Expand mode — seed_node_ids beats seed_chunk_ids.
     if seed_node_ids or seed_chunk_ids:
         raw_seeds = seed_node_ids or seed_chunk_ids or ""
@@ -313,19 +341,15 @@ async def get_knowledge_graph(
         )
 
     # Top-entities mode (default — only when no other discriminator is set).
-    if q is None and not seed_node_ids and not seed_chunk_ids:
-        cap = limit if limit is not None else 30
-        cap = min(cap, 200)
-        nodes_raw, edges_raw = await graph_store.fetch_top_entities(
-            project_id=project_id, limit=cap
-        )
-        return _build_graph_response(
-            mode="top_entities",
-            nodes_raw=nodes_raw,
-            edges_raw=edges_raw,
-            cap=cap,
-            types_filter=types_filter,
-        )
-
-    # search mode implemented in next task.
-    raise HTTPException(status_code=501, detail="search mode not implemented yet")
+    cap = limit if limit is not None else 30
+    cap = min(cap, 200)
+    nodes_raw, edges_raw = await graph_store.fetch_top_entities(
+        project_id=project_id, limit=cap
+    )
+    return _build_graph_response(
+        mode="top_entities",
+        nodes_raw=nodes_raw,
+        edges_raw=edges_raw,
+        cap=cap,
+        types_filter=types_filter,
+    )

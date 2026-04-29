@@ -181,3 +181,99 @@ async def test_unknown_node_types_returns_422(app_with_graph_overrides, db_sessi
         params={"project_id": str(project.id), "node_types": "Bogus"},
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_mode_calls_retriever_then_expands_chunk_hits(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    from datetime import UTC, datetime
+
+    from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
+    from atlas_knowledge.models.retrieval import RetrievalResult, ScoredChunk
+
+    from atlas_api.deps import get_retriever
+
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    chunk_id = uuid4()
+    fake_retriever = AsyncMock()
+    fake_retriever.retrieve.return_value = RetrievalResult(
+        query="hello",
+        chunks=[
+            ScoredChunk(
+                chunk=KnowledgeNode(
+                    id=chunk_id,
+                    user_id="matt",
+                    project_id=project.id,
+                    type=KnowledgeNodeType.CHUNK,
+                    text="hello world",
+                    title="c",
+                    created_at=datetime.now(UTC),
+                    metadata={},
+                ),
+                score=0.9,
+            )
+        ],
+    )
+
+    fake_graph_store.fetch_subgraph_by_seeds.return_value = (
+        [
+            {"id": str(chunk_id), "type": "Chunk", "label": "hello world", "pagerank": None, "metadata": {}},
+        ],
+        [],
+    )
+
+    app.dependency_overrides[get_retriever] = lambda: fake_retriever
+    try:
+        resp = await app_with_graph_overrides.get(
+            "/api/v1/knowledge/graph",
+            params={"project_id": str(project.id), "q": "hello"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_retriever, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["mode"] == "search"
+    assert body["meta"]["hit_node_ids"] == [str(chunk_id)]
+    assert len(body["nodes"]) == 1
+    fake_retriever.retrieve.assert_awaited_once()
+    fake_graph_store.fetch_subgraph_by_seeds.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_search_mode_priority_q_over_seeds(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    """When q AND seeds are both set, q wins."""
+    from atlas_knowledge.models.retrieval import RetrievalResult
+
+    from atlas_api.deps import get_retriever
+
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    fake_retriever = AsyncMock()
+    fake_retriever.retrieve.return_value = RetrievalResult(query="x", chunks=[])
+    fake_graph_store.fetch_subgraph_by_seeds.return_value = ([], [])
+
+    app.dependency_overrides[get_retriever] = lambda: fake_retriever
+    try:
+        resp = await app_with_graph_overrides.get(
+            "/api/v1/knowledge/graph",
+            params={
+                "project_id": str(project.id),
+                "q": "x",
+                "seed_node_ids": str(uuid4()),
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_retriever, None)
+
+    assert resp.status_code == 200
+    assert resp.json()["meta"]["mode"] == "search"
+    fake_retriever.retrieve.assert_awaited_once()
