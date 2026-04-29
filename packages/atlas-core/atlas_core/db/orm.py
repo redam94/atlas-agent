@@ -196,3 +196,6 @@ class IngestionJobORM(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    pagerank_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="skipped"
+    )

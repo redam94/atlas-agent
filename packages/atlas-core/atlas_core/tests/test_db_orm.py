@@ -29,3 +29,24 @@ def test_project_orm_id_is_uuid_primary_key():
     pk_cols = inspect(ProjectORM).primary_key
     assert len(pk_cols) == 1
     assert pk_cols[0].name == "id"
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_ingestion_job_pagerank_status_default(db_session):
+    """A freshly-inserted IngestionJob defaults pagerank_status to 'skipped'."""
+    from atlas_core.db.orm import IngestionJobORM, ProjectORM
+
+    proj = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(proj)
+    await db_session.flush()
+
+    job = IngestionJobORM(
+        user_id="matt", project_id=proj.id, source_type="markdown",
+    )
+    db_session.add(job)
+    await db_session.flush()
+    await db_session.refresh(job)
+    assert job.pagerank_status == "skipped"
