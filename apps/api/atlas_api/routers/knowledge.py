@@ -312,16 +312,20 @@ async def get_knowledge_graph(
             types_filter=types_filter,
         )
 
-    # Top-entities mode (default).
-    cap = limit if limit is not None else 30
-    cap = min(cap, 200)
-    nodes_raw, edges_raw = await graph_store.fetch_top_entities(
-        project_id=project_id, limit=cap
-    )
-    return _build_graph_response(
-        mode="top_entities",
-        nodes_raw=nodes_raw,
-        edges_raw=edges_raw,
-        cap=cap,
-        types_filter=types_filter,
-    )
+    # Top-entities mode (default — only when no other discriminator is set).
+    if q is None and not seed_node_ids and not seed_chunk_ids:
+        cap = limit if limit is not None else 30
+        cap = min(cap, 200)
+        nodes_raw, edges_raw = await graph_store.fetch_top_entities(
+            project_id=project_id, limit=cap
+        )
+        return _build_graph_response(
+            mode="top_entities",
+            nodes_raw=nodes_raw,
+            edges_raw=edges_raw,
+            cap=cap,
+            types_filter=types_filter,
+        )
+
+    # search mode implemented in next task.
+    raise HTTPException(status_code=501, detail="search mode not implemented yet")
