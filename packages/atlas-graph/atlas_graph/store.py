@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -241,6 +242,36 @@ class GraphStore:
             )
 
         await self._with_retry(_do)
+
+    async def run_pagerank(self, *, project_id: UUID) -> None:
+        """Compute global PageRank on the project's subgraph and persist it.
+
+        Naming the projection uniquely-per-call avoids collisions if two
+        ingests in the same project race. The drop runs unconditionally;
+        a failed write must not leak the projection.
+        """
+        from atlas_graph.ingestion.pagerank import (
+            DROP_CYPHER,
+            PROJECT_CYPHER,
+            WRITE_CYPHER,
+        )
+
+        proj_name = f"proj_{str(project_id).replace('-', '')[:12]}_{int(time.time() * 1000)}"
+
+        async def _project_and_write(tx: AsyncTransaction) -> None:
+            await tx.run(PROJECT_CYPHER, name=proj_name, pid=str(project_id))
+            await tx.run(WRITE_CYPHER, name=proj_name)
+
+        async def _drop(tx: AsyncTransaction) -> None:
+            await tx.run(DROP_CYPHER, name=proj_name)
+
+        try:
+            await self._with_retry(_project_and_write)
+        finally:
+            try:
+                await self._with_retry(_drop)
+            except Exception as e:  # noqa: BLE001
+                log.warning("graph.pagerank.drop_failed", name=proj_name, error=str(e))
 
     @asynccontextmanager
     async def _session(self):
