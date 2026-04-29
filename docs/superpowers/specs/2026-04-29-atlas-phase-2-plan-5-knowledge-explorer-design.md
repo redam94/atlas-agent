@@ -14,7 +14,7 @@ Give the user a `/projects/:id/explorer` route that renders a real, interactive 
 
 In scope:
 - New backend endpoint `GET /api/v1/knowledge/graph` covering three modes (top-entities overview, search-driven, click-to-expand) under one wire format.
-- New `GraphStore.expand_nodes(node_ids)` method on `atlas-graph` (generalizes the existing `expand_chunks`).
+- New `GraphStore.fetch_top_entities` and `GraphStore.fetch_subgraph_by_seeds` methods on `atlas-graph` (UI subgraph fetches; the Plan 4 `expand_chunks` retrieval helper stays untouched).
 - New frontend route `/projects/:id/explorer` with Cytoscape.js + cose-fcose force layout, search bar, filter pills, and side panel.
 - Sidebar tab switcher (Chat / Explorer) within an open project.
 - Graceful-degradation behavior consistent with Plan 4 (Neo4j down → search returns vector hits with no edges; overview/expand return 503).
@@ -58,11 +58,13 @@ Out of scope (explicit non-goals for v1):
                           │                  │
                           ▼                  ▼
                   ┌──────────────┐    ┌──────────────────┐
-                  │ HybridRetriever│  │ GraphStore       │
-                  │  (Plan 4)    │    │  (atlas-graph)   │
-                  │              │    │  expand_chunks   │
-                  │              │    │  expand_nodes(*) │
-                  └──────────────┘    └──────┬───────────┘
+                  │ HybridRetriever│  │ GraphStore             │
+                  │  (Plan 4)    │    │  (atlas-graph)         │
+                  │              │    │  expand_chunks         │
+                  │              │    │  fetch_top_entities (*)│
+                  │              │    │  fetch_subgraph_by_(*) │
+                  │              │    │     seeds              │
+                  └──────────────┘    └──────┬─────────────────┘
                                              │
                                              ▼
                                       ┌─────────────┐
@@ -146,15 +148,14 @@ Field semantics:
 - `meta.hit_node_ids` non-empty only for search mode.
 - `meta.degraded_stages` mirrors the Plan 4 retrieval-degradation list (e.g. `["graph_unavailable"]`) when search mode runs in fallback.
 
-### 4.3 New `GraphStore.expand_nodes(node_ids)`
+### 4.3 New GraphStore subgraph fetches
 
-Existing `GraphStore.expand_chunks(chunk_ids)` is chunk-typed. Plan 5 needs to expand any node id. Add a sibling method that:
-- Takes a list of node ids of any type.
-- Runs a single Cypher: `MATCH (n) WHERE n.id IN $ids OPTIONAL MATCH (n)-[r]-(m) RETURN n, r, m LIMIT $cap`.
-- Returns the same `(nodes, edges)` shape as `expand_chunks`.
-- Caps at 25 neighbors per seed (configurable, default 25). Implemented via a per-seed `LIMIT` in a `UNWIND ... CALL { ... }` subquery, not a global LIMIT, so a single high-degree seed can't starve the others.
+Plan 4's `GraphStore.expand_chunks` returns an `ExpansionSubgraph` shaped for retrieval scoring (chunk_id → pagerank only). The UI needs full node data (id, type, label, metadata) and deduped edges. Add two sibling methods:
 
-`expand_chunks` stays as-is — Plan 4 calls it directly and we don't want to disturb that path.
+- `fetch_top_entities(project_id, limit) -> (nodes, edges)` — top-N `Entity` nodes by `pagerank_global`, plus the edges between those entities. Backs `top_entities` mode.
+- `fetch_subgraph_by_seeds(project_id, seed_ids, neighbors_per_seed) -> (nodes, edges)` — 1-hop expansion of arbitrary node ids of any type. Implemented with a `UNWIND seedNodes AS s CALL { ... LIMIT cap }` subquery so the per-seed cap (default 25) is enforced per seed, not globally — a single high-degree seed can't starve the others. Backs both `expand` and `search` modes.
+
+Both return raw dicts; the router converts to Pydantic models. `expand_chunks` stays as-is — Plan 4 calls it directly.
 
 ### 4.4 Wiring
 
@@ -280,10 +281,11 @@ Hand-written TypeScript types in `apps/web/src/lib/api/knowledge-graph.ts`, mirr
 - 422 when `node_types` has an unknown value.
 - Degraded paths: graph store raises → top-entities/expand return 503; search returns vector-only with `degraded_stages`.
 
-`packages/atlas-graph/atlas_graph/tests/test_expansion.py` (extend):
-- `expand_nodes` with entity seeds, chunk seeds, mixed seeds.
+`packages/atlas-graph/atlas_graph/tests/test_subgraph.py` (new):
+- `fetch_top_entities` runs the right Cypher with project_id + limit.
+- `fetch_subgraph_by_seeds` with entity seeds, chunk seeds, mixed seeds.
 - 25-neighbor cap is enforced per seed, not globally.
-- Empty seed list returns `(nodes=[], edges=[])`.
+- Empty seed list returns `(nodes=[], edges=[])` without running Cypher.
 
 Acceptance test (`pytest -m slow`, real Neo4j, same pattern as Plans 2–4): seed a tiny project with one document, two chunks, three entities; hit `/knowledge/graph` in all three modes; assert nodes/edges round-trip and `hit_node_ids` is populated for search.
 
@@ -319,7 +321,7 @@ Vitest + React Testing Library:
 ## 9. Definition of Done
 
 - [ ] `GET /api/v1/knowledge/graph` is implemented, tested, and documented in the router docstring.
-- [ ] `GraphStore.expand_nodes` is implemented and tested.
+- [ ] `GraphStore.fetch_top_entities` and `GraphStore.fetch_subgraph_by_seeds` are implemented and tested.
 - [ ] `/projects/:id/explorer` route renders for a real project with ingested content.
 - [ ] All seven acceptance criteria pass on a manual smoke run.
 - [ ] Backend unit + degraded tests pass; opt-in `slow` acceptance test passes against real Neo4j.
