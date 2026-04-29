@@ -1,11 +1,13 @@
 """Pydantic models for the notes API (Plan 6)."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
 
-from atlas_core.models.base import AtlasModel
 from pydantic import Field
+
+from atlas_core.models.base import AtlasModel
 
 
 class Note(AtlasModel):
@@ -31,12 +33,14 @@ class NoteListItem(AtlasModel):
 
 
 class CreateNoteRequest(AtlasModel):
+    model_config = {"strict": False}
     project_id: UUID
     title: str = "Untitled"
     body_markdown: str = ""
 
 
 class PatchNoteRequest(AtlasModel):
+    model_config = {"strict": False}
     title: str | None = None
     body_markdown: str | None = None
     mention_entity_ids: list[UUID] | None = None
