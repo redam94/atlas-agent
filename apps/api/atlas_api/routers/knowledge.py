@@ -76,7 +76,7 @@ async def ingest_endpoint(
     if await db.get(ProjectORM, payload.project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
     parsed = parse_markdown(payload.text or "", title=None)
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db,
         user_id=settings.user_id,
         project_id=payload.project_id,
@@ -84,7 +84,7 @@ async def ingest_endpoint(
         source_type="markdown",
         source_filename=payload.source_filename,
     )
-    job_row = await db.get(IngestionJobORM, job_id)
+    job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
@@ -102,7 +102,7 @@ async def ingest_pdf_endpoint(
         raise HTTPException(status_code=404, detail="project not found")
     data = await file.read()
     parsed = parse_pdf(data, source_filename=file.filename)
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db,
         user_id=settings.user_id,
         project_id=project_id,
@@ -110,7 +110,7 @@ async def ingest_pdf_endpoint(
         source_type="pdf",
         source_filename=file.filename,
     )
-    job_row = await db.get(IngestionJobORM, job_id)
+    job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
@@ -138,7 +138,7 @@ async def ingest_url_endpoint(
         raise HTTPException(status_code=502, detail=f"could not extract content: {e}") from e
     except Exception as e:  # noqa: BLE001 — Playwright errors are varied
         raise HTTPException(status_code=502, detail=f"fetch failed: {e}") from e
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db,
         user_id=settings.user_id,
         project_id=payload.project_id,
@@ -146,7 +146,7 @@ async def ingest_url_endpoint(
         source_type="url",
         source_filename=url,
     )
-    job_row = await db.get(IngestionJobORM, job_id)
+    job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)

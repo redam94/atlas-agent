@@ -41,7 +41,7 @@ async def test_ingest_markdown_creates_document_chunks_and_completes_job(
     service, project_id, db_session
 ):
     parsed = parse_markdown("# Hello\n\n" + ("body word " * 600), title="Hello")
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db_session,
         user_id="matt",
         project_id=project_id,
@@ -51,7 +51,7 @@ async def test_ingest_markdown_creates_document_chunks_and_completes_job(
     )
 
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
-    assert job.id == job_id
+    assert job.id == result.job_id
     assert job.status == "completed"
     assert job.completed_at is not None
     assert len(job.node_ids) >= 2  # at least one document + one chunk
@@ -78,7 +78,7 @@ async def test_ingest_failure_marks_job_failed(service, project_id, db_session):
         vector_store=service._vector_store,  # noqa: SLF001
     )
     parsed = parse_markdown("# X\n\nbody.")
-    job_id = await bad_service.ingest(
+    result = await bad_service.ingest(
         db=db_session,
         user_id="matt",
         project_id=project_id,
@@ -87,7 +87,7 @@ async def test_ingest_failure_marks_job_failed(service, project_id, db_session):
         source_filename=None,
     )
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
-    assert job.id == job_id
+    assert job.id == result.job_id
     assert job.status == "failed"
     assert "boom" in (job.error or "")
 
@@ -98,12 +98,12 @@ async def test_ingest_does_not_call_graph_writer_when_none(
 ):
     """Default constructor leaves graph_writer=None — existing behavior."""
     parsed = parse_markdown("# Title\n\n" + ("body " * 100))
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db_session, user_id="matt", project_id=project_id,
         parsed=parsed, source_type="markdown", source_filename=None,
     )
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
-    assert job.id == job_id
+    assert job.id == result.job_id
     assert job.status == "completed"
 
 
@@ -118,12 +118,12 @@ async def test_ingest_calls_graph_writer_when_supplied(
         graph_writer=graph_writer,
     )
     parsed = parse_markdown("# Title\n\n" + ("body " * 100))
-    job_id = await service_with_graph.ingest(
+    result = await service_with_graph.ingest(
         db=db_session, user_id="matt", project_id=project_id,
         parsed=parsed, source_type="markdown", source_filename=None,
     )
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
-    assert job.id == job_id
+    assert job.id == result.job_id
     assert job.status == "completed"
     graph_writer.write_document_chunks.assert_awaited_once()
     kwargs = graph_writer.write_document_chunks.await_args.kwargs
@@ -183,12 +183,12 @@ async def test_ingest_empty_document_still_writes_graph_node(
     )
     # Empty string → chunker returns no chunks.
     parsed = parse_markdown("", title="Empty")
-    job_id = await service_with_graph.ingest(
+    result = await service_with_graph.ingest(
         db=db_session, user_id="matt", project_id=project_id,
         parsed=parsed, source_type="markdown", source_filename=None,
     )
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
-    assert job.id == job_id
+    assert job.id == result.job_id
     assert job.status == "completed"
 
     # Graph writer was called with empty chunks list.
@@ -352,13 +352,13 @@ async def test_ingest_pagerank_disabled_skips_run_pagerank(
         pagerank_enabled=False,
     )
     parsed = parse_markdown("# T\n\n" + ("body word " * 600))
-    job_id = await service_with_graph.ingest(
+    result = await service_with_graph.ingest(
         db=db_session, user_id="matt", project_id=project_id,
         parsed=parsed, source_type="markdown", source_filename=None,
     )
 
     job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
-    assert job.id == job_id
+    assert job.id == result.job_id
     assert job.status == "completed"
     assert job.pagerank_status == "skipped"
     graph_writer.run_pagerank.assert_not_awaited()
