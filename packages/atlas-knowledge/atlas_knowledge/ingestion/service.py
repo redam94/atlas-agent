@@ -118,6 +118,7 @@ class IngestionService:
                         document_title=doc_row.title or "Untitled",
                         document_source_type=source_type,
                         document_metadata=dict(doc_row.metadata_ or {}),
+                        document_created_at=doc_row.created_at or datetime.now(UTC),
                         chunks=[],
                     )
                 job.status = "completed"
@@ -176,6 +177,7 @@ class IngestionService:
                     document_title=doc_row.title or "Untitled",
                     document_source_type=source_type,
                     document_metadata=dict(doc_row.metadata_ or {}),
+                    document_created_at=doc_row.created_at or datetime.now(UTC),
                     chunks=[
                         _ChunkSpecAdapter(
                             id=r.id,

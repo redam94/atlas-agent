@@ -7,6 +7,7 @@ the type relationship is structural, not nominal.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -34,5 +35,6 @@ class GraphWriter(Protocol):
         document_title: str,
         document_source_type: str,
         document_metadata: dict,
+        document_created_at: datetime,
         chunks: Sequence[ChunkSpecLike],
     ) -> None: ...

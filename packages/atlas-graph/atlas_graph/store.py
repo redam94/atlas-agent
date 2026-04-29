@@ -5,6 +5,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -88,6 +89,7 @@ class GraphStore:
         document_title: str,
         document_source_type: str,
         document_metadata: dict,
+        document_created_at: datetime,
         chunks: Sequence[ChunkSpec],
     ) -> None:
         """Write Document + Chunk nodes + structural edges in one tx.
@@ -111,12 +113,14 @@ class GraphStore:
             await tx.run(
                 "MERGE (d:Document {id: $id}) "
                 "SET d.project_id = $project_id, d.title = $title, "
-                "    d.source_type = $source_type, d.metadata = $metadata",
+                "    d.source_type = $source_type, d.metadata = $metadata, "
+                "    d.created_at = $created_at",
                 id=str(document_id),
                 project_id=str(project_id),
                 title=document_title,
                 source_type=document_source_type,
                 metadata=meta,
+                created_at=document_created_at.isoformat(),
             )
             await tx.run(
                 "MATCH (d:Document {id: $document_id}), (p:Project {id: $project_id}) "

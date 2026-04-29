@@ -1,5 +1,6 @@
 """Integration test for IngestionService — uses FakeEmbedder + tmp Chroma."""
 
+from datetime import datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -129,6 +130,8 @@ async def test_ingest_calls_graph_writer_when_supplied(
     assert kwargs["project_id"] == project_id
     assert kwargs["project_name"] == "P"
     assert kwargs["document_source_type"] == "markdown"
+    assert "document_created_at" in kwargs
+    assert isinstance(kwargs["document_created_at"], datetime)
     assert len(kwargs["chunks"]) >= 1
     # ChunkSpecLike duck-type: each item has the required attributes + to_param().
     for c in kwargs["chunks"]:
