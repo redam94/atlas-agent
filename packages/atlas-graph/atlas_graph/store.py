@@ -187,6 +187,59 @@ class GraphStore:
 
         await self._with_retry(_do)
 
+    async def expand_chunks(
+        self,
+        *,
+        project_id: UUID,
+        seeds: list[UUID],
+        cap: int = 100,
+    ) -> "ExpansionSubgraph":
+        """Return the seeds + 1-hop neighbors via REFERENCES and SEMANTICALLY_NEAR.
+
+        Uses a separate-cap-per-edge-type budget because the two weight scales
+        (cosine vs shared-entity count) are not comparable.
+        """
+        from atlas_graph.expansion import (
+            EXPAND_REF_CYPHER,
+            EXPAND_SN_CYPHER,
+            SEEDS_PR_CYPHER,
+            ExpansionSubgraph,
+            merge_neighbors_with_budget,
+        )
+
+        if not seeds:
+            return ExpansionSubgraph()
+
+        seed_strs = [str(s) for s in seeds]
+
+        async def _read(tx):
+            sn_result = await tx.run(EXPAND_SN_CYPHER, seeds=seed_strs, pid=str(project_id))
+            sn_rows_raw = await sn_result.data()
+            ref_result = await tx.run(
+                EXPAND_REF_CYPHER, seeds=seed_strs, pid=str(project_id)
+            )
+            ref_rows_raw = await ref_result.data()
+            seed_pr_result = await tx.run(
+                SEEDS_PR_CYPHER, seeds=seed_strs, pid=str(project_id)
+            )
+            seed_pr_raw = await seed_pr_result.data()
+            return sn_rows_raw, ref_rows_raw, seed_pr_raw
+
+        async with self._session() as s:
+            sn_raw, ref_raw, seed_pr_raw = await s.execute_read(_read)
+
+        sn_rows = [
+            (UUID(r["a"]), UUID(r["b"]), float(r["w"]), float(r["pa"]), float(r["pb"]))
+            for r in sn_raw
+        ]
+        ref_rows = [
+            (UUID(r["a"]), UUID(r["b"]), float(r["w"]), float(r["pa"]), float(r["pb"]))
+            for r in ref_raw
+        ]
+        seed_prs = {UUID(r["id"]): float(r["pr"]) for r in seed_pr_raw}
+
+        return merge_neighbors_with_budget(seeds, sn_rows, ref_rows, seed_prs, cap)
+
     async def write_entities(
         self,
         *,
