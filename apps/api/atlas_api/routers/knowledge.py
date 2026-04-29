@@ -22,6 +22,7 @@ from atlas_core.db.converters import (
 )
 from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from atlas_graph import GraphStore
+from atlas_graph.errors import GraphUnavailableError
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.models.graph import (
     GraphEdge,
@@ -298,17 +299,33 @@ async def get_knowledge_graph(
             RetrievalQuery(project_id=project_id, text=q, top_k=10)
         )
         chunk_hits = [c.chunk.id for c in retrieval.chunks]
+        degraded: list[str] = []
         if not chunk_hits:
             return GraphResponse(
                 nodes=[],
                 edges=[],
                 meta=GraphMeta(mode="search", truncated=False, hit_node_ids=[]),
             )
-        nodes_raw, edges_raw = await graph_store.fetch_subgraph_by_seeds(
-            project_id=project_id,
-            seed_ids=chunk_hits,
-            neighbors_per_seed=25,
-        )
+        try:
+            nodes_raw, edges_raw = await graph_store.fetch_subgraph_by_seeds(
+                project_id=project_id,
+                seed_ids=chunk_hits,
+                neighbors_per_seed=25,
+            )
+        except GraphUnavailableError:
+            # Fallback: synthesize chunk nodes from the retrieval result, no edges.
+            nodes_raw = [
+                {
+                    "id": str(c.chunk.id),
+                    "type": "Chunk",
+                    "label": (c.chunk.text or "")[:80],
+                    "pagerank": None,
+                    "metadata": {"text_preview": (c.chunk.text or "")[:200]},
+                }
+                for c in retrieval.chunks
+            ]
+            edges_raw = []
+            degraded = ["graph_unavailable"]
         return _build_graph_response(
             mode="search",
             nodes_raw=nodes_raw,
@@ -316,6 +333,7 @@ async def get_knowledge_graph(
             cap=cap,
             types_filter=types_filter,
             hit_node_ids=chunk_hits,
+            degraded_stages=degraded,
         )
 
     # Expand mode — seed_node_ids beats seed_chunk_ids.
@@ -327,11 +345,14 @@ async def get_knowledge_graph(
             raise HTTPException(status_code=422, detail="invalid seed UUID") from e
         cap = limit if limit is not None else 50
         cap = min(cap, 200)
-        nodes_raw, edges_raw = await graph_store.fetch_subgraph_by_seeds(
-            project_id=project_id,
-            seed_ids=seed_uuids,
-            neighbors_per_seed=25,
-        )
+        try:
+            nodes_raw, edges_raw = await graph_store.fetch_subgraph_by_seeds(
+                project_id=project_id,
+                seed_ids=seed_uuids,
+                neighbors_per_seed=25,
+            )
+        except GraphUnavailableError as e:
+            raise HTTPException(status_code=503, detail="graph_unavailable") from e
         return _build_graph_response(
             mode="expand",
             nodes_raw=nodes_raw,
@@ -343,9 +364,12 @@ async def get_knowledge_graph(
     # Top-entities mode (default — only when no other discriminator is set).
     cap = limit if limit is not None else 30
     cap = min(cap, 200)
-    nodes_raw, edges_raw = await graph_store.fetch_top_entities(
-        project_id=project_id, limit=cap
-    )
+    try:
+        nodes_raw, edges_raw = await graph_store.fetch_top_entities(
+            project_id=project_id, limit=cap
+        )
+    except GraphUnavailableError as e:
+        raise HTTPException(status_code=503, detail="graph_unavailable") from e
     return _build_graph_response(
         mode="top_entities",
         nodes_raw=nodes_raw,

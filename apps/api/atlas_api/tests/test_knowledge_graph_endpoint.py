@@ -277,3 +277,95 @@ async def test_search_mode_priority_q_over_seeds(
     assert resp.status_code == 200
     assert resp.json()["meta"]["mode"] == "search"
     fake_retriever.retrieve.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_top_entities_returns_503_when_graph_unavailable(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    from atlas_graph.errors import GraphUnavailableError
+
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    fake_graph_store.fetch_top_entities.side_effect = GraphUnavailableError("neo4j down")
+
+    resp = await app_with_graph_overrides.get(
+        "/api/v1/knowledge/graph",
+        params={"project_id": str(project.id)},
+    )
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "graph_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_expand_returns_503_when_graph_unavailable(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    from atlas_graph.errors import GraphUnavailableError
+
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    fake_graph_store.fetch_subgraph_by_seeds.side_effect = GraphUnavailableError("neo4j down")
+
+    resp = await app_with_graph_overrides.get(
+        "/api/v1/knowledge/graph",
+        params={"project_id": str(project.id), "seed_node_ids": str(uuid4())},
+    )
+    assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_search_falls_back_to_chunks_only_when_graph_unavailable(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    from datetime import datetime
+
+    from atlas_graph.errors import GraphUnavailableError
+    from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
+    from atlas_knowledge.models.retrieval import RetrievalResult, ScoredChunk
+
+    from atlas_api.deps import get_retriever
+
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    chunk_id = uuid4()
+    fake_retriever = AsyncMock()
+    fake_retriever.retrieve.return_value = RetrievalResult(
+        query="x",
+        chunks=[
+            ScoredChunk(
+                chunk=KnowledgeNode(
+                    id=chunk_id, user_id="matt", project_id=project.id,
+                    type=KnowledgeNodeType.CHUNK,
+                    title="c", text="x", metadata={},
+                    created_at=datetime.utcnow(),
+                ),
+                score=0.5,
+            )
+        ],
+    )
+    fake_graph_store.fetch_subgraph_by_seeds.side_effect = GraphUnavailableError("neo4j down")
+
+    app.dependency_overrides[get_retriever] = lambda: fake_retriever
+    try:
+        resp = await app_with_graph_overrides.get(
+            "/api/v1/knowledge/graph",
+            params={"project_id": str(project.id), "q": "x"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_retriever, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["mode"] == "search"
+    assert body["meta"]["degraded_stages"] == ["graph_unavailable"]
+    assert body["edges"] == []
+    # Hit chunk synthesized as a node so the UI has something to render.
+    assert len(body["nodes"]) == 1
+    assert body["nodes"][0]["id"] == str(chunk_id)
