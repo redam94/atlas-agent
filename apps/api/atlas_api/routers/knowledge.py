@@ -7,6 +7,7 @@ GET    /api/v1/knowledge/jobs/{id}       Ingestion job status
 GET    /api/v1/knowledge/nodes           List nodes for a project
 DELETE /api/v1/knowledge/nodes/{id}      Delete node + chunks
 GET    /api/v1/knowledge/search          Debug RAG search
+GET    /api/v1/knowledge/graph           Subgraph for explorer visualization
 """
 
 from __future__ import annotations
@@ -21,6 +22,12 @@ from atlas_core.db.converters import (
 )
 from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
 from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.models.graph import (
+    GraphEdge,
+    GraphMeta,
+    GraphNode,
+    GraphResponse,
+)
 from atlas_knowledge.models.ingestion import (
     IngestionJob,
     IngestRequest,
@@ -38,11 +45,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atlas_api.deps import (
+    get_graph_store,
     get_ingestion_service,
     get_retriever,
     get_session,
     get_settings,
 )
+from atlas_graph import GraphStore
 
 router = APIRouter(tags=["knowledge"])
 
@@ -190,3 +199,83 @@ async def search(
     retriever: Retriever = Depends(get_retriever),
 ) -> RetrievalResult:
     return await retriever.retrieve(RetrievalQuery(project_id=project_id, text=query, top_k=top_k))
+
+
+# --- Graph (explorer) ----
+
+def _to_graph_node(raw: dict) -> GraphNode:
+    return GraphNode(
+        id=UUID(raw["id"]),
+        type=raw["type"],
+        label=raw["label"] or "",
+        pagerank=raw.get("pagerank"),
+        metadata=raw.get("metadata") or {},
+    )
+
+
+def _to_graph_edge(raw: dict) -> GraphEdge:
+    return GraphEdge(
+        id=raw["id"],
+        source=UUID(raw["source"]),
+        target=UUID(raw["target"]),
+        type=raw["type"],
+    )
+
+
+@router.get("/knowledge/graph", response_model=GraphResponse)
+async def get_knowledge_graph(
+    project_id: UUID,
+    q: str | None = None,
+    seed_chunk_ids: str | None = None,
+    seed_node_ids: str | None = None,
+    node_types: str | None = None,
+    limit: int | None = None,
+    db: AsyncSession = Depends(get_session),
+    graph_store: GraphStore = Depends(get_graph_store),
+    retriever: Retriever = Depends(get_retriever),
+) -> GraphResponse:
+    """Return a subgraph of the project's knowledge graph for visualization.
+
+    Modes (priority: q > seed_node_ids > seed_chunk_ids > none):
+      - search: q is set → run hybrid retriever, expand chunk hits 1-hop.
+      - expand: seed_*_ids set → 1-hop expansion of those seeds.
+      - top_entities: none of the above → top-N entities by PageRank.
+    """
+    project = await db.get(ProjectORM, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    valid_types = {"Document", "Chunk", "Entity"}
+    types_filter: set[str] | None = None
+    if node_types:
+        types_filter = {t.strip() for t in node_types.split(",") if t.strip()}
+        unknown = types_filter - valid_types
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=f"unknown node_types: {sorted(unknown)}",
+            )
+
+    # Mode discrimination — top_entities only for Task 4.
+    if q is None and not seed_node_ids and not seed_chunk_ids:
+        cap = limit if limit is not None else 30
+        cap = min(cap, 200)
+        nodes_raw, edges_raw = await graph_store.fetch_top_entities(
+            project_id=project_id, limit=cap
+        )
+        truncated = len(nodes_raw) >= cap
+        nodes = [_to_graph_node(n) for n in nodes_raw]
+        if types_filter:
+            nodes = [n for n in nodes if n.type in types_filter]
+            kept = {n.id for n in nodes}
+            edges = [_to_graph_edge(e) for e in edges_raw if UUID(e["source"]) in kept and UUID(e["target"]) in kept]
+        else:
+            edges = [_to_graph_edge(e) for e in edges_raw]
+        return GraphResponse(
+            nodes=nodes,
+            edges=edges,
+            meta=GraphMeta(mode="top_entities", truncated=truncated),
+        )
+
+    # search and expand modes implemented in subsequent tasks.
+    raise HTTPException(status_code=501, detail="not implemented yet")
