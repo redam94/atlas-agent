@@ -76,6 +76,7 @@ class IngestionService:
         semantic_near_threshold: float = 0.85,
         semantic_near_top_k: int = 50,
         temporal_near_window_days: int = 7,
+        pagerank_enabled: bool = True,
     ) -> None:
         self._embedder = embedder
         self._vector_store = vector_store
@@ -84,6 +85,7 @@ class IngestionService:
         self._semantic_near_threshold = semantic_near_threshold
         self._semantic_near_top_k = semantic_near_top_k
         self._temporal_near_window_days = temporal_near_window_days
+        self._pagerank_enabled = pagerank_enabled
 
     async def ingest(
         self,
@@ -239,12 +241,14 @@ class IngestionService:
                 )
 
                 # 5.9 — PageRank (best-effort tier).
-                try:
-                    await self._graph_writer.run_pagerank(project_id=project_id)
-                    pagerank_status = _PAGERANK_STATUS_OK
-                except Exception:
-                    log.exception("ingest.pagerank_failed", job_id=str(job.id))
-                    pagerank_status = _PAGERANK_STATUS_FAILED
+                if self._pagerank_enabled:
+                    try:
+                        await self._graph_writer.run_pagerank(project_id=project_id)
+                        pagerank_status = _PAGERANK_STATUS_OK
+                    except Exception:
+                        log.exception("ingest.pagerank_failed", job_id=str(job.id))
+                        pagerank_status = _PAGERANK_STATUS_FAILED
+                # else: pagerank_status stays SKIPPED
 
             # 6. Mark job complete.
             job.status = "completed"

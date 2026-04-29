@@ -334,3 +334,28 @@ async def test_merge_semantic_near_pairs_canonicalized(
     pairs = near_call.kwargs["pairs"]
     for a, b, _ in pairs:
         assert str(a) < str(b), f"pair not canonicalized: {a}, {b}"
+
+
+@pytest.mark.asyncio
+async def test_ingest_pagerank_disabled_skips_run_pagerank(
+    vector_store, project_id, db_session
+):
+    """When pagerank_enabled=False, run_pagerank is not awaited and status is skipped."""
+    graph_writer = AsyncMock(spec=GraphWriter)
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+        pagerank_enabled=False,
+    )
+    parsed = parse_markdown("# T\n\n" + ("body word " * 600))
+    job_id = await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.id == job_id
+    assert job.status == "completed"
+    assert job.pagerank_status == "skipped"
+    graph_writer.run_pagerank.assert_not_awaited()

@@ -84,13 +84,16 @@ async def lifespan(app: FastAPI):
     applied = await MigrationRunner(graph_driver, migrations_dir).run_pending()
     log.info("graph.migrations.applied", ids=applied)
     # NER backend for Plan 3 entity extraction.
-    http_client = httpx.AsyncClient()
-    ner_extractor = NerExtractor(
-        client=http_client,
-        base_url=str(config.llm.lmstudio_base_url),
-        max_entities=config.graph.ner_max_entities_per_chunk,
-    )
-    app.state.http_client = http_client
+    ner_extractor = None
+    http_client = None
+    if config.graph.ner_enabled:
+        http_client = httpx.AsyncClient()
+        ner_extractor = NerExtractor(
+            client=http_client,
+            base_url=str(config.llm.lmstudio_base_url),
+            max_entities=config.graph.ner_max_entities_per_chunk,
+        )
+        app.state.http_client = http_client
     graph_store = GraphStore(graph_driver, ner_extractor=ner_extractor)
     app.state.graph_driver = graph_driver
     app.state.graph_store = graph_store
@@ -108,6 +111,7 @@ async def lifespan(app: FastAPI):
         semantic_near_threshold=config.graph.semantic_near_threshold,
         semantic_near_top_k=config.graph.semantic_near_top_k,
         temporal_near_window_days=config.graph.temporal_near_window_days,
+        pagerank_enabled=config.graph.pagerank_enabled,
     )
     app.state.retriever = Retriever(embedder=embedder, vector_store=vector_store)
     if config.graph.backfill_on_start:
@@ -132,7 +136,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        await http_client.aclose()
+        if http_client is not None:
+            await http_client.aclose()
         await graph_store.close()
         await engine.dispose()
         log.info("api.shutdown")
