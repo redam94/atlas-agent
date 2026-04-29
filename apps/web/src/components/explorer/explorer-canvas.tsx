@@ -102,7 +102,14 @@ export function ExplorerCanvas() {
     const cy = cyRef.current;
     if (!cy) return;
     cy.json({ elements });
-    cy.layout({ name: "fcose", animate: false, randomize: false } as any).run();
+    // cytoscape-fcose extends cytoscape's layout options at runtime but doesn't
+    // provide TS types for the extended fields; cast lets us pass fcose-specific
+    // options.
+    cy.layout({
+      name: "fcose",
+      animate: false,
+      randomize: false,
+    } as cytoscape.LayoutOptions).run();
   }, [elements]);
 
   // Apply visibility filter.
