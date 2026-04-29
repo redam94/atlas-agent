@@ -15,7 +15,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from atlas_core.config import AtlasConfig
-from atlas_core.db.orm import MessageORM, ProjectORM
+from atlas_core.db.orm import KnowledgeNodeORM, MessageORM, ProjectORM
 from atlas_core.providers import FakeProvider
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
 from atlas_knowledge.embeddings import FakeEmbedder
@@ -25,6 +25,10 @@ from atlas_knowledge.vector.chroma import ChromaVectorStore
 from httpx_ws import aconnect_ws
 from httpx_ws.transport import ASGIWebSocketTransport
 from sqlalchemy import select
+
+from atlas_graph.expansion import ExpansionSubgraph
+from atlas_knowledge.retrieval.hybrid.hybrid import HybridRetriever
+from atlas_knowledge.retrieval.hybrid.rerank import FakeReranker
 
 from atlas_api.deps import get_model_router, get_retriever, get_session, get_settings
 from atlas_api.main import app
@@ -99,6 +103,19 @@ async def _seed_project_and_chunks(
     await db_session.flush()
 
     parent_id = uuid4()
+    # Insert parent document ORM row so FK from chunks is valid.
+    parent_orm = KnowledgeNodeORM(
+        id=parent_id,
+        user_id="matt",
+        project_id=project_id,
+        type="document",
+        parent_id=None,
+        title="Parent Doc",
+        text="",
+        metadata_={},
+    )
+    db_session.add(parent_orm)
+
     chunks = [
         KnowledgeNode(
             id=uuid4(),
@@ -112,6 +129,22 @@ async def _seed_project_and_chunks(
         )
         for i, text in enumerate(texts)
     ]
+    # Insert chunk ORM rows so HybridRetriever.hydrate can resolve them from Postgres.
+    for chunk in chunks:
+        db_session.add(
+            KnowledgeNodeORM(
+                id=chunk.id,
+                user_id=chunk.user_id,
+                project_id=chunk.project_id,
+                type="chunk",
+                parent_id=parent_id,
+                title=chunk.title,
+                text=chunk.text,
+                metadata_={},
+            )
+        )
+    await db_session.flush()
+
     embeddings = await fake_embedder.embed_documents(texts)
     await vector_store.upsert(chunks, embeddings)
     return chunks
@@ -268,3 +301,98 @@ async def test_empty_knowledge_base_skips_event(set_overrides, db_session):
     )
     assistant = next(r for r in rows if r.role == "assistant")
     assert assistant.rag_context is None
+
+
+# --- hybrid-mode tests ---------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def hybrid_retriever(vector_store, fake_embedder, db_session):
+    """HybridRetriever that reuses the test's FakeEmbedder + tmp Chroma + db_session.
+
+    Uses a stub GraphStore returning an empty ExpansionSubgraph so the pipeline
+    runs without Neo4j. Expansion and PPR will degrade gracefully — the WS-level
+    behavior (rag.context event + citations) should match the vector path.
+    """
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    graph_store = AsyncMock()
+
+    async def _expand(*, project_id, seeds, cap):
+        return ExpansionSubgraph(nodes={s: 0.0 for s in seeds}, edges=[])
+
+    graph_store.expand_chunks.side_effect = _expand
+
+    @asynccontextmanager
+    async def _session_cm():
+        yield db_session
+
+    class _SessionFactory:
+        def __call__(self):
+            return _session_cm()
+
+    return HybridRetriever(
+        embedder=fake_embedder,
+        vector_store=vector_store,
+        graph_store=graph_store,
+        reranker=FakeReranker(scores={}),
+        session_factory=_SessionFactory(),  # type: ignore[arg-type]
+    )
+
+
+@pytest_asyncio.fixture
+async def set_overrides_hybrid(db_session, fake_router, fake_settings, hybrid_retriever):
+    """Same as set_overrides but injects HybridRetriever instead of Retriever."""
+
+    async def _override_session():
+        yield db_session
+
+    app.dependency_overrides[get_session] = _override_session
+    app.dependency_overrides[get_model_router] = lambda: fake_router
+    app.dependency_overrides[get_settings] = lambda: fake_settings
+    app.dependency_overrides[get_retriever] = lambda: hybrid_retriever
+    yield
+    for dep in (get_session, get_model_router, get_settings, get_retriever):
+        app.dependency_overrides.pop(dep, None)
+
+
+@pytest.mark.asyncio
+async def test_rag_happy_path_works_under_hybrid_mode(
+    set_overrides_hybrid, db_session, vector_store, fake_embedder
+):
+    """Same scenario as test_rag_happy_path_emits_event_and_persists_citations,
+    but with HybridRetriever. Asserts the rag.context event still arrives with
+    citations sourced from the hybrid pipeline (BM25 + vector + degraded graph)."""
+    project_id = uuid4()
+    chunks = await _seed_project_and_chunks(
+        db_session,
+        vector_store,
+        fake_embedder,
+        project_id,
+        texts=["alpha context body", "beta context body"],
+    )
+    chunk_ids = {str(c.id) for c in chunks}
+
+    session_id = uuid4()
+    async with _ws_client() as http, aconnect_ws(f"/api/v1/ws/{session_id}", http) as ws:
+        await ws.send_json(
+            {
+                "type": "chat.message",
+                "payload": {
+                    "text": "alpha",
+                    "project_id": str(project_id),
+                    "rag_enabled": True,
+                    "top_k_context": 5,
+                },
+            }
+        )
+        events = await _drain_events_until_done(ws)
+
+    types = [e["type"] for e in events]
+    assert "rag.context" in types
+    rag_evt = events[types.index("rag.context")]
+    citations = rag_evt["payload"]["citations"]
+    assert len(citations) >= 1
+    for cite in citations:
+        assert cite["chunk_id"] in chunk_ids

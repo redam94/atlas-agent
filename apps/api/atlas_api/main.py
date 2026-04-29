@@ -16,6 +16,8 @@ from atlas_graph import GraphStore, MigrationRunner, backfill_phase1
 from atlas_graph.ingestion.ner import NerExtractor
 from atlas_knowledge.embeddings import SentenceTransformersEmbedder
 from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.retrieval.hybrid.hybrid import HybridRetriever
+from atlas_knowledge.retrieval.hybrid.rerank import Reranker
 from atlas_knowledge.retrieval.retriever import Retriever
 from atlas_knowledge.vector.chroma import ChromaVectorStore
 from fastapi import FastAPI
@@ -114,7 +116,20 @@ async def lifespan(app: FastAPI):
         temporal_near_window_days=config.graph.temporal_near_window_days,
         pagerank_enabled=config.graph.pagerank_enabled,
     )
-    app.state.retriever = Retriever(embedder=embedder, vector_store=vector_store)
+    if config.retrieval.mode == "hybrid":
+        reranker = Reranker(model_name=config.retrieval.reranker_model)
+        app.state.reranker = reranker
+        app.state.retriever = HybridRetriever(
+            embedder=embedder,
+            vector_store=vector_store,
+            graph_store=graph_store,
+            reranker=reranker,
+            session_factory=app.state.session_factory,
+        )
+        log.info("retriever.mode", mode="hybrid")
+    else:
+        app.state.retriever = Retriever(embedder=embedder, vector_store=vector_store)
+        log.info("retriever.mode", mode="vector")
     if config.graph.backfill_on_start:
         log.info("graph.backfill.start")
         async with session_scope(app.state.session_factory) as backfill_db:
