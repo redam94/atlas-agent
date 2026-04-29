@@ -42,6 +42,11 @@ RETURN id(r) AS rid, a.id AS source, b.id AS target, type(r) AS type
 """
 
 # Plan 5 — 1-hop expansion of arbitrary node ids, capped per seed via subquery.
+#
+# Note: the seed MATCH is intentionally label-less — seeds can be a mix of
+# Document/Chunk/Entity. UUID seeds make cross-label id collisions impossible.
+# This trades label-scoped indexes for the flexibility of mixed-type seeds;
+# fine at project scale (typical project < 10k nodes).
 SUBGRAPH_CYPHER = """
 MATCH (s) WHERE s.id IN $seeds AND s.project_id = $pid
 WITH collect(DISTINCT s) AS seedNodes, $cap AS cap
@@ -51,20 +56,42 @@ CALL {
   MATCH (s)-[r]-(n)
   WHERE n.project_id = s.project_id
   RETURN r, n
+  ORDER BY coalesce(n.pagerank_global, 0.0) DESC
   LIMIT cap
 }
-WITH seedNodes, collect(DISTINCT {r: r, n: n}) AS hits
-WITH seedNodes, hits,
-     [x IN hits | x.n] + seedNodes AS allNodes,
-     [x IN hits | x.r] AS allRels
+WITH seedNodes,
+     collect(DISTINCT {
+       id: toString(elementId(r)),
+       source: startNode(r).id,
+       target: endNode(r).id,
+       type: type(r)
+     }) AS allRels,
+     collect(DISTINCT n) AS neighborNodes
+WITH seedNodes + neighborNodes AS allNodes, allRels
 UNWIND allNodes AS node
 WITH DISTINCT node, allRels
 RETURN
   node.id AS id,
   labels(node)[0] AS type,
-  coalesce(node.label, node.title, node.text, "") AS label,
+  coalesce(node.label, node.title, left(coalesce(node.text, ''), 80), '') AS label,
   node.pagerank_global AS pagerank,
-  properties(node) AS props,
+  CASE labels(node)[0]
+    WHEN 'Chunk' THEN {
+      document_id: node.document_id,
+      chunk_index: node.chunk_index,
+      text_preview: left(coalesce(node.text, ''), 200)
+    }
+    WHEN 'Document' THEN {
+      title: node.title,
+      source_type: node.source_type,
+      source_url: node.source_url
+    }
+    WHEN 'Entity' THEN {
+      entity_type: node.entity_type,
+      mention_count: coalesce(node.mention_count, 0)
+    }
+    ELSE {}
+  END AS metadata,
   allRels AS rels
 """
 
@@ -82,29 +109,6 @@ def _serialize_metadata(metadata: dict) -> str:
     this function does not coerce bytes/tuple/set.
     """
     return json.dumps(metadata, default=str)
-
-
-def _project_node_metadata(node_type: str, props: dict) -> dict:
-    """Strip large/internal fields and project per-type metadata for the UI."""
-    if node_type == "Document":
-        return {
-            "title": props.get("title") or props.get("label"),
-            "source_type": props.get("source_type"),
-            "source_url": props.get("source_url"),
-        }
-    if node_type == "Chunk":
-        text = props.get("text") or ""
-        return {
-            "document_id": props.get("document_id"),
-            "chunk_index": props.get("chunk_index"),
-            "text_preview": text[:200],
-        }
-    if node_type == "Entity":
-        return {
-            "entity_type": props.get("entity_type"),
-            "mention_count": int(props.get("mention_count") or 0),
-        }
-    return {}
 
 
 class GraphStore:
@@ -369,8 +373,8 @@ class GraphStore:
         """1-hop expansion of arbitrary nodes by id.
 
         Returns nodes (full dicts with id/type/label/metadata) and
-        deduped edges. Per-seed neighbor cap prevents one high-degree
-        seed from starving the others.
+        deduped edges. Per-seed neighbor cap (with PageRank-DESC ordering for
+        determinism) prevents one high-degree seed from starving the others.
         """
         if not seed_ids:
             return [], []
@@ -396,18 +400,18 @@ class GraphStore:
                     "type": row["type"],
                     "label": row["label"],
                     "pagerank": float(row["pagerank"]) if row["pagerank"] is not None else None,
-                    "metadata": _project_node_metadata(row["type"], row["props"]),
+                    "metadata": row["metadata"] or {},
                 }
             for rel in row["rels"]:
-                if rel is None:
+                if rel is None or rel.get("source") is None or rel.get("target") is None:
                     continue
-                rel_id = str(rel.element_id) if hasattr(rel, "element_id") else str(rel.id)
+                rel_id = rel["id"]
                 if rel_id not in edges:
                     edges[rel_id] = {
                         "id": rel_id,
-                        "source": rel.start_node["id"],
-                        "target": rel.end_node["id"],
-                        "type": rel.type,
+                        "source": rel["source"],
+                        "target": rel["target"],
+                        "type": rel["type"],
                     }
 
         return list(nodes.values()), list(edges.values())
