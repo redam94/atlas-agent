@@ -94,11 +94,13 @@ class NerExtractor:
         client: httpx.AsyncClient,
         base_url: str,
         max_entities: int,
+        model: str = "ner",
         request_timeout: float = 30.0,
     ) -> None:
         self._client = client
         self._base_url = base_url.rstrip("/")
         self._max_entities = max_entities
+        self._model = model
         self._timeout = request_timeout
 
     async def extract_batch(
@@ -112,7 +114,7 @@ class NerExtractor:
 
     async def _extract_one(self, text: str) -> list[Entity]:
         payload = {
-            "model": "ner",  # LM Studio ignores model name when one is loaded
+            "model": self._model,
             "messages": [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": text},

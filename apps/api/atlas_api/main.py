@@ -92,6 +92,7 @@ async def lifespan(app: FastAPI):
             client=http_client,
             base_url=str(config.llm.lmstudio_base_url),
             max_entities=config.graph.ner_max_entities_per_chunk,
+            model=config.llm.local_model or "ner",
         )
         app.state.http_client = http_client
     graph_store = GraphStore(graph_driver, ner_extractor=ner_extractor)
