@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -121,6 +122,7 @@ async def test_write_document_chunks_runs_5_cypher_statements_in_one_tx():
         document_title="Doc One",
         document_source_type="markdown",
         document_metadata={"author": "matt"},
+        document_created_at=datetime.now(UTC),
         chunks=chunks,
     )
 
@@ -163,6 +165,7 @@ async def test_write_document_chunks_passes_str_uuids_for_ids():
         document_title="t",
         document_source_type="markdown",
         document_metadata={},
+        document_created_at=datetime.now(UTC),
         chunks=[ChunkSpec(id=cid, position=0, token_count=1, text_preview="x")],
     )
     # All id parameters are stringified UUIDs (Neo4j stores them as strings).
@@ -209,6 +212,7 @@ async def test_write_document_chunks_serializes_metadata_as_json_string():
         document_title="t",
         document_source_type="markdown",
         document_metadata=metadata,
+        document_created_at=datetime.now(UTC),
         chunks=[],
     )
     document_call_meta = captured[1][1]["metadata"]
@@ -216,3 +220,79 @@ async def test_write_document_chunks_serializes_metadata_as_json_string():
     assert isinstance(document_call_meta, str)
     decoded = json.loads(document_call_meta)
     assert decoded == metadata
+
+
+@pytest.mark.asyncio
+async def test_write_document_chunks_sets_created_at_on_document():
+    """Document.created_at is set from the document_created_at parameter (ISO 8601 string)."""
+    driver = MagicMock()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    driver.session = MagicMock(return_value=session)
+
+    captured: list[tuple[str, dict]] = []
+
+    async def fake_execute_write(fn):
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append((cypher, params))
+        tx.run = fake_run
+        await fn(tx)
+
+    session.execute_write = fake_execute_write
+
+    store = GraphStore(driver)
+    ts = datetime(2026, 4, 28, 12, 0, 0, tzinfo=UTC)
+
+    await store.write_document_chunks(
+        project_id=uuid4(),
+        project_name="P",
+        document_id=uuid4(),
+        document_title="t",
+        document_source_type="markdown",
+        document_metadata={},
+        document_created_at=ts,
+        chunks=[],
+    )
+
+    # Find the (single) Document MERGE call and verify created_at parameter.
+    doc_calls = [(c, p) for (c, p) in captured if "MERGE (d:Document" in c]
+    assert len(doc_calls) == 1
+    cypher, params = doc_calls[0]
+    assert "d.created_at" in cypher
+    assert params["created_at"] == ts.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_document_detach_deletes_doc_and_chunks():
+    """cleanup_document removes the Document and its Chunks (project-scoped)."""
+    driver = MagicMock()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    driver.session = MagicMock(return_value=session)
+
+    captured: list[tuple[str, dict]] = []
+
+    async def fake_execute_write(fn):
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append((cypher, params))
+        tx.run = fake_run
+        await fn(tx)
+
+    session.execute_write = fake_execute_write
+
+    store = GraphStore(driver)
+    pid, did = uuid4(), uuid4()
+
+    await store.cleanup_document(project_id=pid, document_id=did)
+
+    assert len(captured) == 1
+    cypher, params = captured[0]
+    assert "DETACH DELETE d, c" in cypher
+    assert "MATCH (d:Document {id: $document_id})" in cypher
+    assert "OPTIONAL MATCH (c:Chunk {parent_id: $document_id})" in cypher
+    assert params["document_id"] == str(did)
+    assert params["project_id"] == str(pid)

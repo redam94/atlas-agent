@@ -86,3 +86,35 @@ def test_atlas_config_mounts_graph_subconfig(monkeypatch):
     monkeypatch.setenv("ATLAS_DB__DATABASE_URL", "postgresql://x:y@localhost/z")
     cfg = AtlasConfig()
     assert isinstance(cfg.graph, GraphConfig)
+
+
+def test_graph_config_plan3_defaults(monkeypatch):
+    """Plan 3 — NER + edge builder + PageRank knobs default to sensible values."""
+    monkeypatch.setenv("ATLAS_DB__DATABASE_URL", "postgresql://x")
+    monkeypatch.setenv("ATLAS_GRAPH__PASSWORD", "pw")
+    cfg = AtlasConfig()
+    assert cfg.graph.ner_enabled is True
+    assert cfg.graph.ner_max_entities_per_chunk == 20
+    assert cfg.graph.semantic_near_threshold == 0.85
+    assert cfg.graph.semantic_near_top_k == 50
+    assert cfg.graph.temporal_near_window_days == 7
+    assert cfg.graph.pagerank_enabled is True
+
+
+def test_graph_config_plan3_env_override(monkeypatch):
+    """All Plan 3 knobs are overridable via ATLAS_GRAPH__* env vars."""
+    monkeypatch.setenv("ATLAS_DB__DATABASE_URL", "postgresql://x")
+    monkeypatch.setenv("ATLAS_GRAPH__PASSWORD", "pw")
+    monkeypatch.setenv("ATLAS_GRAPH__NER_ENABLED", "false")
+    monkeypatch.setenv("ATLAS_GRAPH__NER_MAX_ENTITIES_PER_CHUNK", "5")
+    monkeypatch.setenv("ATLAS_GRAPH__SEMANTIC_NEAR_THRESHOLD", "0.9")
+    monkeypatch.setenv("ATLAS_GRAPH__SEMANTIC_NEAR_TOP_K", "10")
+    monkeypatch.setenv("ATLAS_GRAPH__TEMPORAL_NEAR_WINDOW_DAYS", "3")
+    monkeypatch.setenv("ATLAS_GRAPH__PAGERANK_ENABLED", "false")
+    cfg = AtlasConfig()
+    assert cfg.graph.ner_enabled is False
+    assert cfg.graph.ner_max_entities_per_chunk == 5
+    assert cfg.graph.semantic_near_threshold == 0.9
+    assert cfg.graph.semantic_near_top_k == 10
+    assert cfg.graph.temporal_near_window_days == 3
+    assert cfg.graph.pagerank_enabled is False

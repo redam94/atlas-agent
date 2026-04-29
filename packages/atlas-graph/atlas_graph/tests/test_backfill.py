@@ -63,6 +63,8 @@ async def test_backfill_writes_one_call_per_document(db_session: AsyncSession):
     assert len(kwargs["chunks"]) == 3
     # Chunks have id, position, token_count, text_preview.
     assert {c.position for c in kwargs["chunks"]} == {0, 1, 2}
+    # Drift protection: verify document_created_at was passed.
+    assert "document_created_at" in kwargs
 
 
 @pytest.mark.asyncio

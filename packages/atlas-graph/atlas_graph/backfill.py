@@ -90,6 +90,7 @@ async def backfill_phase1(
             document_title=doc.title or "Untitled",
             document_source_type=str((doc.metadata_ or {}).get("source_type", "unknown")),
             document_metadata=dict(doc.metadata_ or {}),
+            document_created_at=doc.created_at or datetime.now(UTC),
             chunks=specs,
         )
 
