@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { MessageSquare, Network } from "lucide-react";
+import { MessageSquare, Network, StickyNote } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 interface Props {
@@ -33,6 +33,18 @@ export function ProjectTabs({ projectId }: Props) {
       >
         <Network className="h-4 w-4" />
         Explorer
+      </NavLink>
+      <NavLink
+        to={`/projects/${projectId}/notes`}
+        className={({ isActive }) =>
+          cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1 text-sm transition",
+            isActive ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent/50",
+          )
+        }
+      >
+        <StickyNote className="h-4 w-4" />
+        Notes
       </NavLink>
     </nav>
   );
