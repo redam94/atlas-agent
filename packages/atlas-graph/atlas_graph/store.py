@@ -13,11 +13,13 @@ import structlog
 from neo4j.exceptions import ServiceUnavailable, TransientError
 
 from atlas_graph.errors import GraphUnavailableError
-from atlas_graph.protocols import ChunkSpec
+from atlas_graph.protocols import ChunkSpec, ChunkWithText
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
     from neo4j._async.driver import AsyncTransaction
+
+    from atlas_graph.ingestion.ner import NerExtractor
 
 log = structlog.get_logger("atlas.graph.store")
 
@@ -46,9 +48,16 @@ class GraphStore:
     GraphUnavailableError.
     """
 
-    def __init__(self, driver: AsyncDriver, *, max_retries: int = 3) -> None:
+    def __init__(
+        self,
+        driver: AsyncDriver,
+        *,
+        max_retries: int = 3,
+        ner_extractor: NerExtractor | None = None,
+    ) -> None:
         self._driver = driver
         self._max_retries = max_retries
+        self._ner_extractor = ner_extractor
 
     async def close(self) -> None:
         await self._driver.close()
@@ -146,6 +155,38 @@ class GraphStore:
                 document_id=str(document_id),
                 chunk_ids=chunk_ids,
             )
+
+        await self._with_retry(_do)
+
+    async def write_entities(
+        self,
+        *,
+        project_id: UUID,
+        chunks: Sequence[ChunkWithText],
+    ) -> None:
+        """Run NER over chunk text and MERGE Entity nodes + REFERENCES edges.
+
+        No-op on empty chunks. Raises NerFailure if LM Studio is unreachable.
+        """
+        if not chunks or self._ner_extractor is None:
+            return
+        from atlas_graph.ingestion.entities import (
+            MERGE_ENTITIES_CYPHER,
+            MERGE_REFERENCES_CYPHER,
+            flatten,
+        )
+
+        chunk_entities = await self._ner_extractor.extract_batch(
+            [(c.id, c.text) for c in chunks]
+        )
+        entities, references = flatten(project_id, chunk_entities)
+        if not entities:
+            return
+
+        async def _do(tx: AsyncTransaction) -> None:
+            await tx.run(MERGE_ENTITIES_CYPHER, entities=entities)
+            if references:
+                await tx.run(MERGE_REFERENCES_CYPHER, references=references)
 
         await self._with_retry(_do)
 

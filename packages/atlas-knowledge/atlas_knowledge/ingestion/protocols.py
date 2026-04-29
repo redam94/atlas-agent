@@ -23,6 +23,13 @@ class ChunkSpecLike(Protocol):
     def to_param(self) -> dict[str, object]: ...
 
 
+class ChunkWithTextLike(Protocol):
+    """Minimal duck-type a chunk passed to write_entities must satisfy."""
+
+    id: UUID
+    text: str
+
+
 class GraphWriter(Protocol):
     """Side-effect interface for writing document/chunk nodes to a graph store."""
 
@@ -37,4 +44,11 @@ class GraphWriter(Protocol):
         document_metadata: dict,
         document_created_at: datetime,
         chunks: Sequence[ChunkSpecLike],
+    ) -> None: ...
+
+    async def write_entities(
+        self,
+        *,
+        project_id: UUID,
+        chunks: Sequence[ChunkWithTextLike],
     ) -> None: ...

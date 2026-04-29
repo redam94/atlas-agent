@@ -6,6 +6,8 @@ come from the env defaults set in the root conftest.py).
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -52,3 +54,70 @@ async def isolated_project_id(real_neo4j_driver):
             "MATCH (p:Project {id: $pid}) DETACH DELETE p",
             pid=str(pid),
         )
+
+
+@dataclass
+class _Call:
+    query: str
+    kwargs: dict
+
+
+class _FakeAsyncDriver:
+    """Records every (cypher, kwargs) tuple passed through tx.run inside execute_write.
+
+    The store calls ``async with self._driver.session() as s: await s.execute_write(fn)``;
+    this fake's session.execute_write runs the closure against a fake transaction
+    whose ``run(cypher, **kwargs)`` records into ``self.calls``.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[_Call] = []
+        self._tx_run_failer = None  # optional override: callable(query) -> raise
+
+    def make_tx_raise_on(self, predicate):
+        """Tell the driver to raise on tx.run when predicate(query) is truthy."""
+        self._tx_run_failer = predicate
+
+    @property
+    def session(self):
+        return self._make_session
+
+    def _make_session(self):
+        return _FakeSession(self)
+
+    async def close(self):
+        pass
+
+
+class _FakeSession:
+    def __init__(self, driver: _FakeAsyncDriver) -> None:
+        self._driver = driver
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def execute_write(self, fn):
+        tx = AsyncMock()
+
+        async def _run(query, **kwargs):
+            if self._driver._tx_run_failer is not None and self._driver._tx_run_failer(query):
+                raise RuntimeError("forced failure")
+            self._driver.calls.append(_Call(query=query, kwargs=kwargs))
+
+        tx.run = _run
+        return await fn(tx)
+
+    async def execute_read(self, fn):
+        tx = AsyncMock()
+        return await fn(tx)
+
+    async def run(self, query, **kwargs):
+        self._driver.calls.append(_Call(query=query, kwargs=kwargs))
+
+
+@pytest.fixture
+def fake_async_driver():
+    return _FakeAsyncDriver()

@@ -28,3 +28,11 @@ class ChunkSpec:
             "token_count": self.token_count,
             "text_preview": self.text_preview,
         }
+
+
+@dataclass(frozen=True)
+class ChunkWithText:
+    """Chunk shape needed by GraphStore.write_entities — full text required for NER."""
+
+    id: UUID
+    text: str
