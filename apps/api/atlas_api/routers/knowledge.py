@@ -181,12 +181,18 @@ async def list_nodes(
 async def delete_node(
     node_id: UUID,
     db: AsyncSession = Depends(get_session),
+    service: IngestionService = Depends(get_ingestion_service),
 ) -> None:
     row = await db.get(KnowledgeNodeORM, node_id)
     if row is None:
         raise HTTPException(status_code=404, detail="node not found")
-    await db.delete(row)
-    await db.flush()
+    if row.type == "document":
+        await service.cleanup_document(
+            db=db, project_id=row.project_id, document_id=row.id
+        )
+    else:
+        await db.delete(row)
+        await db.flush()
 
 
 # --- Search (debug) ------------------------------------------------------
