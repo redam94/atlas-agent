@@ -25,6 +25,7 @@ from atlas_graph import GraphStore
 from atlas_graph.errors import GraphUnavailableError
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.models.graph import (
+    EntitySuggestion,
     GraphEdge,
     GraphMeta,
     GraphNode,
@@ -383,3 +384,38 @@ async def get_knowledge_graph(
         cap=cap,
         types_filter=types_filter,
     )
+
+
+# --- Entities (mention autocomplete) -------------------------------------
+
+
+@router.get("/knowledge/entities", response_model=list[EntitySuggestion])
+async def list_entities(
+    project_id: UUID,
+    prefix: str = "",
+    limit: int = 10,
+    db: AsyncSession = Depends(get_session),
+    graph_store: GraphStore = Depends(get_graph_store),
+) -> list[EntitySuggestion]:
+    """Prefix-match entities for the @-mention dropdown.
+
+    Empty prefix returns top-N entities by PageRank.
+    """
+    project = await db.get(ProjectORM, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    try:
+        rows = await graph_store.list_entities(
+            project_id=project_id, prefix=prefix, limit=min(limit, 50)
+        )
+    except GraphUnavailableError as e:
+        raise HTTPException(status_code=503, detail="graph_unavailable") from e
+    return [
+        EntitySuggestion(
+            id=UUID(r["id"]),
+            name=r["name"] or "",
+            entity_type=r.get("entity_type"),
+            pagerank=float(r.get("pagerank") or 0.0),
+        )
+        for r in rows
+    ]

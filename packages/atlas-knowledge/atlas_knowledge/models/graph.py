@@ -38,3 +38,11 @@ class GraphResponse(AtlasModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     meta: GraphMeta
+
+
+class EntitySuggestion(AtlasModel):
+    """One row in the @-mention autocomplete dropdown."""
+    id: UUID
+    name: str
+    entity_type: str | None = None
+    pagerank: float = 0.0
