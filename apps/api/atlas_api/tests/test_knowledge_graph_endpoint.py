@@ -322,7 +322,7 @@ async def test_expand_returns_503_when_graph_unavailable(
 async def test_search_falls_back_to_chunks_only_when_graph_unavailable(
     app_with_graph_overrides, db_session, fake_graph_store
 ):
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     from atlas_graph.errors import GraphUnavailableError
     from atlas_knowledge.models.nodes import KnowledgeNode, KnowledgeNodeType
@@ -344,7 +344,7 @@ async def test_search_falls_back_to_chunks_only_when_graph_unavailable(
                     id=chunk_id, user_id="matt", project_id=project.id,
                     type=KnowledgeNodeType.CHUNK,
                     title="c", text="x", metadata={},
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
                 ),
                 score=0.5,
             )
