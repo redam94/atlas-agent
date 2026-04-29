@@ -41,6 +41,33 @@ WHERE b.id IN $ids AND id(a) < id(b)
 RETURN id(r) AS rid, a.id AS source, b.id AS target, type(r) AS type
 """
 
+# Plan 5 — 1-hop expansion of arbitrary node ids, capped per seed via subquery.
+SUBGRAPH_CYPHER = """
+MATCH (s) WHERE s.id IN $seeds AND s.project_id = $pid
+WITH collect(DISTINCT s) AS seedNodes, $cap AS cap
+UNWIND seedNodes AS s
+CALL {
+  WITH s, cap
+  MATCH (s)-[r]-(n)
+  WHERE n.project_id = s.project_id
+  RETURN r, n
+  LIMIT cap
+}
+WITH seedNodes, collect(DISTINCT {r: r, n: n}) AS hits
+WITH seedNodes, hits,
+     [x IN hits | x.n] + seedNodes AS allNodes,
+     [x IN hits | x.r] AS allRels
+UNWIND allNodes AS node
+WITH DISTINCT node, allRels
+RETURN
+  node.id AS id,
+  labels(node)[0] AS type,
+  coalesce(node.label, node.title, node.text, "") AS label,
+  node.pagerank_global AS pagerank,
+  properties(node) AS props,
+  allRels AS rels
+"""
+
 
 def _serialize_metadata(metadata: dict) -> str:
     """JSON-encode the metadata dict for storage as a Neo4j string property.
@@ -55,6 +82,29 @@ def _serialize_metadata(metadata: dict) -> str:
     this function does not coerce bytes/tuple/set.
     """
     return json.dumps(metadata, default=str)
+
+
+def _project_node_metadata(node_type: str, props: dict) -> dict:
+    """Strip large/internal fields and project per-type metadata for the UI."""
+    if node_type == "Document":
+        return {
+            "title": props.get("title") or props.get("label"),
+            "source_type": props.get("source_type"),
+            "source_url": props.get("source_url"),
+        }
+    if node_type == "Chunk":
+        text = props.get("text") or ""
+        return {
+            "document_id": props.get("document_id"),
+            "chunk_index": props.get("chunk_index"),
+            "text_preview": text[:200],
+        }
+    if node_type == "Entity":
+        return {
+            "entity_type": props.get("entity_type"),
+            "mention_count": int(props.get("mention_count") or 0),
+        }
+    return {}
 
 
 class GraphStore:
@@ -308,6 +358,59 @@ class GraphStore:
             for r in edges_raw
         ]
         return nodes, edges
+
+    async def fetch_subgraph_by_seeds(
+        self,
+        *,
+        project_id: UUID,
+        seed_ids: list[UUID],
+        neighbors_per_seed: int = 25,
+    ) -> tuple[list[dict], list[dict]]:
+        """1-hop expansion of arbitrary nodes by id.
+
+        Returns nodes (full dicts with id/type/label/metadata) and
+        deduped edges. Per-seed neighbor cap prevents one high-degree
+        seed from starving the others.
+        """
+        if not seed_ids:
+            return [], []
+
+        seed_strs = [str(s) for s in seed_ids]
+
+        async def _read(tx):
+            result = await tx.run(
+                SUBGRAPH_CYPHER, seeds=seed_strs, pid=str(project_id), cap=int(neighbors_per_seed)
+            )
+            return await result.data()
+
+        async with self._session() as s:
+            rows = await s.execute_read(_read)
+
+        nodes: dict[str, dict] = {}
+        edges: dict[str, dict] = {}
+        for row in rows:
+            node_id = row["id"]
+            if node_id not in nodes:
+                nodes[node_id] = {
+                    "id": node_id,
+                    "type": row["type"],
+                    "label": row["label"],
+                    "pagerank": float(row["pagerank"]) if row["pagerank"] is not None else None,
+                    "metadata": _project_node_metadata(row["type"], row["props"]),
+                }
+            for rel in row["rels"]:
+                if rel is None:
+                    continue
+                rel_id = str(rel.element_id) if hasattr(rel, "element_id") else str(rel.id)
+                if rel_id not in edges:
+                    edges[rel_id] = {
+                        "id": rel_id,
+                        "source": rel.start_node["id"],
+                        "target": rel.end_node["id"],
+                        "type": rel.type,
+                    }
+
+        return list(nodes.values()), list(edges.values())
 
     async def write_entities(
         self,
