@@ -99,6 +99,12 @@ RETURN
   allRels AS rels
 """
 
+# Plan 6 — explicit @-mention edges from a note's (:Document) to (:Entity) nodes.
+TAG_NOTE_CYPHER = """
+UNWIND $entity_ids AS eid
+MATCH (n:Document {id: $note_id}), (e:Entity {id: eid})
+MERGE (n)-[:TAGGED_WITH]->(e)
+"""
 
 def _serialize_metadata(metadata: dict) -> str:
     """JSON-encode the metadata dict for storage as a Neo4j string property.
@@ -419,6 +425,28 @@ class GraphStore:
                     }
 
         return list(nodes.values()), list(edges.values())
+
+    async def tag_note(
+        self,
+        *,
+        note_id: UUID,
+        entity_ids: list[UUID],
+    ) -> None:
+        """Create (:Document {id:note_id})-[:TAGGED_WITH]->(:Entity {id:eid}) edges.
+
+        Idempotent via MERGE; safe to re-call on every Save & Index.
+        """
+        if not entity_ids:
+            return
+
+        async def _do(tx: AsyncTransaction) -> None:
+            await tx.run(
+                TAG_NOTE_CYPHER,
+                note_id=str(note_id),
+                entity_ids=[str(e) for e in entity_ids],
+            )
+
+        await self._with_retry(_do)
 
     async def write_entities(
         self,
