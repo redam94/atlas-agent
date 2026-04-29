@@ -206,3 +206,131 @@ def test_chunk_spec_adapter_satisfies_chunk_spec_like_protocol():
     # Also verify the to_param shape.
     param = adapter.to_param()
     assert set(param.keys()) == {"id", "position", "token_count", "text_preview"}
+
+
+@pytest.mark.asyncio
+async def test_ingest_calls_full_plan3_pipeline_when_writer_supports_it(
+    vector_store, project_id, db_session
+):
+    """When graph_writer has all Plan 3 methods, ingest calls them in the documented order."""
+    graph_writer = AsyncMock(spec=GraphWriter)
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# T\n\n" + ("body word " * 600))
+    await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+
+    # Order: write_document_chunks → write_entities → merge_semantic_near
+    #        → build_temporal_near → run_pagerank
+    method_call_order = [
+        c[0] for c in graph_writer.method_calls
+        if c[0] in {
+            "write_document_chunks", "write_entities", "merge_semantic_near",
+            "build_temporal_near", "run_pagerank",
+        }
+    ]
+    assert method_call_order == [
+        "write_document_chunks", "write_entities", "merge_semantic_near",
+        "build_temporal_near", "run_pagerank",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ingest_marks_pagerank_status_ok_on_success(
+    vector_store, project_id, db_session
+):
+    graph_writer = AsyncMock(spec=GraphWriter)
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# T\n\n" + ("body word " * 600))
+    await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.status == "completed"
+    assert job.pagerank_status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_ingest_pagerank_failure_does_not_abort_job(
+    vector_store, project_id, db_session
+):
+    """run_pagerank failure → job completes with pagerank_status='failed'."""
+    graph_writer = AsyncMock(spec=GraphWriter)
+    graph_writer.run_pagerank.side_effect = RuntimeError("gds boom")
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# T\n\n" + ("body word " * 600))
+    await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.status == "completed"
+    assert job.pagerank_status == "failed"
+    nodes = (await db_session.execute(select(KnowledgeNodeORM))).scalars().all()
+    assert len(nodes) >= 2  # doc + chunks committed despite pagerank failure
+
+
+@pytest.mark.asyncio
+async def test_ingest_aborts_when_write_entities_fails(
+    vector_store, project_id, db_session
+):
+    """write_entities failure → job aborts + Postgres rollback (NER is required tier)."""
+    graph_writer = AsyncMock(spec=GraphWriter)
+    graph_writer.write_entities.side_effect = RuntimeError("ner down")
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# T\n\n" + ("body word " * 600))
+    await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+
+    job = (await db_session.execute(select(IngestionJobORM))).scalar_one()
+    assert job.status == "failed"
+    assert "ner down" in (job.error or "")
+    nodes = (await db_session.execute(select(KnowledgeNodeORM))).scalars().all()
+    assert nodes == []
+
+
+@pytest.mark.asyncio
+async def test_merge_semantic_near_pairs_canonicalized(
+    vector_store, project_id, db_session
+):
+    """Pairs passed to merge_semantic_near are sorted by (a < b) lexicographically."""
+    graph_writer = AsyncMock(spec=GraphWriter)
+    service_with_graph = IngestionService(
+        embedder=FakeEmbedder(dim=16),
+        vector_store=vector_store,
+        graph_writer=graph_writer,
+    )
+    parsed = parse_markdown("# T\n\n" + ("body word " * 600))
+    await service_with_graph.ingest(
+        db=db_session, user_id="matt", project_id=project_id,
+        parsed=parsed, source_type="markdown", source_filename=None,
+    )
+
+    near_call = graph_writer.merge_semantic_near.await_args
+    if near_call is None:
+        pytest.skip("FakeEmbedder produces no near pairs above threshold")
+    pairs = near_call.kwargs["pairs"]
+    for a, b, _ in pairs:
+        assert str(a) < str(b), f"pair not canonicalized: {a}, {b}"

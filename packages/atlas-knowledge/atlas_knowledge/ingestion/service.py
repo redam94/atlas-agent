@@ -49,6 +49,22 @@ class _ChunkSpecAdapter:
         }
 
 
+@dataclass(frozen=True)
+class _ChunkWithTextAdapter:
+    """Duck-type for atlas_graph.protocols.ChunkWithText.
+
+    Carries the full chunk text for NER (atlas_graph reads this).
+    """
+
+    id: UUID
+    text: str
+
+
+_PAGERANK_STATUS_OK = "ok"
+_PAGERANK_STATUS_FAILED = "failed"
+_PAGERANK_STATUS_SKIPPED = "skipped"
+
+
 class IngestionService:
     def __init__(
         self,
@@ -57,11 +73,17 @@ class IngestionService:
         *,
         chunker: SemanticChunker | None = None,
         graph_writer: GraphWriter | None = None,
+        semantic_near_threshold: float = 0.85,
+        semantic_near_top_k: int = 50,
+        temporal_near_window_days: int = 7,
     ) -> None:
         self._embedder = embedder
         self._vector_store = vector_store
         self._chunker = chunker or SemanticChunker(target_tokens=512, overlap_tokens=128)
         self._graph_writer = graph_writer
+        self._semantic_near_threshold = semantic_near_threshold
+        self._semantic_near_top_k = semantic_near_top_k
+        self._temporal_near_window_days = temporal_near_window_days
 
     async def ingest(
         self,
@@ -104,10 +126,9 @@ class IngestionService:
             # 2. Chunk.
             raw_chunks = self._chunker.chunk(parsed.text)
             if not raw_chunks:
-                # Edge case: empty document. Job completes with just the doc node.
-                # Write the (:Document) node to the graph (with chunks=[]) so the
-                # design invariant holds — every Postgres document has a graph
-                # counterpart. Cypher UNWIND $chunks/[]/$chunk_ids/[] is a no-op.
+                # Empty doc: write the (:Document) node only. Plan 3 ops require
+                # chunks (NER), embeddings (semantic), or are pointless on an
+                # isolated doc (pagerank). Status stays "skipped".
                 if self._graph_writer is not None:
                     project_row = await db.get(ProjectORM, project_id)
                     project_name = project_row.name if project_row else "Unknown"
@@ -122,6 +143,7 @@ class IngestionService:
                         chunks=[],
                     )
                 job.status = "completed"
+                job.pagerank_status = _PAGERANK_STATUS_SKIPPED
                 job.completed_at = datetime.now(UTC)
                 job.node_ids = [str(doc_row.id)]
                 await db.flush()
@@ -166,10 +188,21 @@ class IngestionService:
                 row.embedding_id = str(row.id)
             await db.flush()
 
-            # 5.5 Write to graph if a writer is configured.
+            # 5.5 Plan 2 — structural graph writes.
+            pagerank_status = _PAGERANK_STATUS_SKIPPED
             if self._graph_writer is not None:
                 project_row = await db.get(ProjectORM, project_id)
                 project_name = project_row.name if project_row else "Unknown"
+                doc_created_at = doc_row.created_at or datetime.now(UTC)
+                chunk_specs = [
+                    _ChunkSpecAdapter(
+                        id=r.id,
+                        position=int((r.metadata_ or {}).get("index", 0)),
+                        token_count=int((r.metadata_ or {}).get("token_count", 0)),
+                        text_preview=r.text[:_TEXT_PREVIEW_LEN],
+                    )
+                    for r in chunk_rows
+                ]
                 await self._graph_writer.write_document_chunks(
                     project_id=project_id,
                     project_name=project_name,
@@ -177,20 +210,45 @@ class IngestionService:
                     document_title=doc_row.title or "Untitled",
                     document_source_type=source_type,
                     document_metadata=dict(doc_row.metadata_ or {}),
-                    document_created_at=doc_row.created_at or datetime.now(UTC),
+                    document_created_at=doc_created_at,
+                    chunks=chunk_specs,
+                )
+
+                # 5.6 — Plan 3 NER + entity edges (required tier).
+                await self._graph_writer.write_entities(
+                    project_id=project_id,
                     chunks=[
-                        _ChunkSpecAdapter(
-                            id=r.id,
-                            position=int((r.metadata_ or {}).get("index", 0)),
-                            token_count=int((r.metadata_ or {}).get("token_count", 0)),
-                            text_preview=r.text[:_TEXT_PREVIEW_LEN],
-                        )
+                        _ChunkWithTextAdapter(id=r.id, text=r.text)
                         for r in chunk_rows
                     ],
                 )
 
+                # 5.7 — semantic-near pairs (compute against Chroma, then write).
+                pairs = await self._compute_semantic_near_pairs(
+                    project_id=project_id,
+                    chunk_rows=chunk_rows,
+                    embeddings=embeddings,
+                )
+                await self._graph_writer.merge_semantic_near(pairs=pairs)
+
+                # 5.8 — temporal-near (cheap Cypher).
+                await self._graph_writer.build_temporal_near(
+                    project_id=project_id,
+                    document_id=doc_row.id,
+                    window_days=self._temporal_near_window_days,
+                )
+
+                # 5.9 — PageRank (best-effort tier).
+                try:
+                    await self._graph_writer.run_pagerank(project_id=project_id)
+                    pagerank_status = _PAGERANK_STATUS_OK
+                except Exception:
+                    log.exception("ingest.pagerank_failed", job_id=str(job.id))
+                    pagerank_status = _PAGERANK_STATUS_FAILED
+
             # 6. Mark job complete.
             job.status = "completed"
+            job.pagerank_status = pagerank_status
             job.completed_at = datetime.now(UTC)
             job.node_ids = [str(doc_row.id)] + [str(r.id) for r in chunk_rows]
             await db.flush()
@@ -211,3 +269,35 @@ class IngestionService:
             job.completed_at = datetime.now(UTC)
             await db.flush()
             return job.id
+
+    async def _compute_semantic_near_pairs(
+        self,
+        *,
+        project_id: UUID,
+        chunk_rows: list[KnowledgeNodeORM],
+        embeddings: list[list[float]],
+    ) -> list[tuple[UUID, UUID, float]]:
+        """Query Chroma top-K per new chunk; return canonical (a<b) pairs above threshold."""
+        if not chunk_rows:
+            return []
+        threshold = self._semantic_near_threshold
+        top_k = self._semantic_near_top_k
+        seen: set[tuple[str, str]] = set()
+        out: list[tuple[UUID, UUID, float]] = []
+        for chunk_row, embedding in zip(chunk_rows, embeddings, strict=True):
+            scored = await self._vector_store.search(
+                query_embedding=embedding,
+                top_k=top_k,
+                filter={"project_id": str(project_id)},
+            )
+            for sc in scored:
+                if sc.score < threshold:
+                    continue
+                if sc.chunk.id == chunk_row.id:
+                    continue
+                a, b = sorted((str(chunk_row.id), str(sc.chunk.id)))
+                if (a, b) in seen:
+                    continue
+                seen.add((a, b))
+                out.append((UUID(a), UUID(b), float(sc.score)))
+        return out
