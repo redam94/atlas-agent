@@ -309,6 +309,9 @@ async def test_ingest_aborts_when_write_entities_fails(
     assert "ner down" in (job.error or "")
     nodes = (await db_session.execute(select(KnowledgeNodeORM))).scalars().all()
     assert nodes == []
+    # Compensating graph cleanup must run so Neo4j doesn't keep orphan nodes
+    # from the structural write that committed before NER failed.
+    graph_writer.cleanup_document.assert_awaited_once()
 
 
 @pytest.mark.asyncio

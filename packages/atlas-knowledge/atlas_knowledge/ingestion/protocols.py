@@ -68,3 +68,10 @@ class GraphWriter(Protocol):
     ) -> None: ...
 
     async def run_pagerank(self, *, project_id: UUID) -> None: ...
+
+    async def cleanup_document(
+        self,
+        *,
+        project_id: UUID,
+        document_id: UUID,
+    ) -> None: ...

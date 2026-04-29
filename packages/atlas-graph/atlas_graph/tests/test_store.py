@@ -262,3 +262,37 @@ async def test_write_document_chunks_sets_created_at_on_document():
     cypher, params = doc_calls[0]
     assert "d.created_at" in cypher
     assert params["created_at"] == ts.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_document_detach_deletes_doc_and_chunks():
+    """cleanup_document removes the Document and its Chunks (project-scoped)."""
+    driver = MagicMock()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    driver.session = MagicMock(return_value=session)
+
+    captured: list[tuple[str, dict]] = []
+
+    async def fake_execute_write(fn):
+        tx = AsyncMock()
+        async def fake_run(cypher, **params):
+            captured.append((cypher, params))
+        tx.run = fake_run
+        await fn(tx)
+
+    session.execute_write = fake_execute_write
+
+    store = GraphStore(driver)
+    pid, did = uuid4(), uuid4()
+
+    await store.cleanup_document(project_id=pid, document_id=did)
+
+    assert len(captured) == 1
+    cypher, params = captured[0]
+    assert "DETACH DELETE d, c" in cypher
+    assert "MATCH (d:Document {id: $document_id})" in cypher
+    assert "OPTIONAL MATCH (c:Chunk {parent_id: $document_id})" in cypher
+    assert params["document_id"] == str(did)
+    assert params["project_id"] == str(pid)

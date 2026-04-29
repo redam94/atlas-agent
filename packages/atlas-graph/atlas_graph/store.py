@@ -159,6 +159,34 @@ class GraphStore:
 
         await self._with_retry(_do)
 
+    async def cleanup_document(
+        self,
+        *,
+        project_id: UUID,
+        document_id: UUID,
+    ) -> None:
+        """Compensating delete: remove a Document and its Chunks (and edges).
+
+        Called when ingestion fails after structural writes have committed.
+        Neo4j doesn't participate in the Postgres transaction, so a Postgres
+        rollback alone leaves orphan graph nodes. This method removes them.
+
+        Entities are NOT deleted — they're project-scoped and may be referenced
+        by other documents; the lost REFERENCES edges are detached automatically
+        when the chunks are removed.
+        """
+        async def _do(tx: AsyncTransaction) -> None:
+            await tx.run(
+                "MATCH (d:Document {id: $document_id}) "
+                "WHERE d.project_id = $project_id "
+                "OPTIONAL MATCH (c:Chunk {parent_id: $document_id}) "
+                "DETACH DELETE d, c",
+                document_id=str(document_id),
+                project_id=str(project_id),
+            )
+
+        await self._with_retry(_do)
+
     async def write_entities(
         self,
         *,

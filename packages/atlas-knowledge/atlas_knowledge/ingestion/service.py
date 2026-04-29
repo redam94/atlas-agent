@@ -268,6 +268,20 @@ class IngestionService:
                 await db.delete(row)
             if doc_row is not None:
                 await db.delete(doc_row)
+            # Compensating delete on the graph: write_document_chunks may have
+            # already committed Document + Chunk nodes in Neo4j (separate tx
+            # from Postgres). Clean them up so the graph stays consistent.
+            # Wrapped in try/except so cleanup failures don't mask the original.
+            if doc_row is not None and self._graph_writer is not None:
+                try:
+                    await self._graph_writer.cleanup_document(
+                        project_id=project_id,
+                        document_id=doc_row.id,
+                    )
+                except Exception:
+                    log.exception(
+                        "ingest.graph_cleanup_failed", job_id=str(job.id),
+                    )
             job.status = "failed"
             job.error = str(e)
             job.completed_at = datetime.now(UTC)
