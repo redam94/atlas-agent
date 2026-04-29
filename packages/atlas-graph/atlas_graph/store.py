@@ -24,6 +24,23 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger("atlas.graph.store")
 
+# Plan 5 — UI subgraph fetches.
+TOP_ENTITIES_CYPHER = """
+MATCH (e:Entity {project_id: $pid})
+RETURN e.id AS id, e.label AS label, e.entity_type AS entity_type,
+       coalesce(e.pagerank_global, 0.0) AS pagerank,
+       coalesce(e.mention_count, 0) AS mention_count
+ORDER BY pagerank DESC
+LIMIT $limit
+"""
+
+TOP_ENTITIES_EDGES_CYPHER = """
+UNWIND $ids AS aid
+MATCH (a:Entity {id: aid})-[r]-(b:Entity)
+WHERE b.id IN $ids AND id(a) < id(b)
+RETURN id(r) AS rid, a.id AS source, b.id AS target, type(r) AS type
+"""
+
 
 def _serialize_metadata(metadata: dict) -> str:
     """JSON-encode the metadata dict for storage as a Neo4j string property.
@@ -239,6 +256,58 @@ class GraphStore:
         seed_prs = {UUID(r["id"]): float(r["pr"]) for r in seed_pr_raw}
 
         return merge_neighbors_with_budget(seeds, sn_rows, ref_rows, seed_prs, cap)
+
+    async def fetch_top_entities(
+        self,
+        *,
+        project_id: UUID,
+        limit: int = 30,
+    ) -> tuple[list[dict], list[dict]]:
+        """Top-N entities by PageRank for the project, plus edges between them.
+
+        Returns ``(nodes, edges)``. Each node is a dict with keys
+        ``id, type, label, pagerank, metadata``. Each edge has
+        ``id, source, target, type``. UUIDs are returned as strings — the
+        router converts them to Pydantic models.
+        """
+        async def _read(tx):
+            node_result = await tx.run(
+                TOP_ENTITIES_CYPHER, pid=str(project_id), limit=int(limit)
+            )
+            nodes_raw = await node_result.data()
+            if not nodes_raw:
+                return [], []
+            ids = [r["id"] for r in nodes_raw]
+            edge_result = await tx.run(TOP_ENTITIES_EDGES_CYPHER, ids=ids)
+            edges_raw = await edge_result.data()
+            return nodes_raw, edges_raw
+
+        async with self._session() as s:
+            nodes_raw, edges_raw = await s.execute_read(_read)
+
+        nodes = [
+            {
+                "id": r["id"],
+                "type": "Entity",
+                "label": r["label"],
+                "pagerank": float(r["pagerank"]),
+                "metadata": {
+                    "entity_type": r.get("entity_type"),
+                    "mention_count": int(r.get("mention_count") or 0),
+                },
+            }
+            for r in nodes_raw
+        ]
+        edges = [
+            {
+                "id": str(r["rid"]),
+                "source": r["source"],
+                "target": r["target"],
+                "type": r["type"],
+            }
+            for r in edges_raw
+        ]
+        return nodes, edges
 
     async def write_entities(
         self,
