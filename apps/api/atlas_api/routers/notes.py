@@ -13,19 +13,22 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from atlas_core.db.orm import NoteORM, ProjectORM
+from atlas_core.db.orm import IngestionJobORM, NoteORM, ProjectORM
 from atlas_core.models.notes import (
     CreateNoteRequest,
     Note,
     NoteListItem,
     PatchNoteRequest,
 )
+from atlas_graph import GraphStore
 from atlas_knowledge.ingestion.service import IngestionService
+from atlas_knowledge.models.ingestion import IngestionJob
+from atlas_knowledge.parsers.markdown import parse_markdown
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atlas_api.deps import get_ingestion_service, get_session
+from atlas_api.deps import get_graph_store, get_ingestion_service, get_session
 
 router = APIRouter(tags=["notes"])
 
@@ -128,3 +131,47 @@ async def delete_note(
         )
     await db.delete(row)
     await db.flush()
+
+
+@router.post("/notes/{note_id}/index", response_model=IngestionJob)
+async def index_note(
+    note_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    service: IngestionService = Depends(get_ingestion_service),
+    graph_store: GraphStore = Depends(get_graph_store),
+) -> IngestionJob:
+    """Run the full ingestion pipeline (chunker + embedder + NER + graph) on the note's body."""
+    note = await db.get(NoteORM, note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="note not found")
+
+    if note.knowledge_node_id is not None:
+        await service.cleanup_document(
+            db=db, project_id=note.project_id, document_id=note.knowledge_node_id
+        )
+
+    parsed = parse_markdown(note.body_markdown, title=note.title)
+    result = await service.ingest(
+        db=db,
+        user_id=note.user_id,
+        project_id=note.project_id,
+        parsed=parsed,
+        source_type="note",
+        source_filename=None,
+    )
+
+    if result.document_id is not None and note.mention_entity_ids:
+        await graph_store.tag_note(
+            note_id=result.document_id,
+            entity_ids=list(note.mention_entity_ids),
+        )
+
+    note.knowledge_node_id = result.document_id
+    note.indexed_at = datetime.now(UTC)
+    await db.flush()
+
+    job_row = await db.get(IngestionJobORM, result.job_id)
+    if job_row is None:
+        raise HTTPException(status_code=500, detail="ingest produced no job row")
+    from atlas_core.db.converters import ingestion_job_from_orm
+    return ingestion_job_from_orm(job_row)
