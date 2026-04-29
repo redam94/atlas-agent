@@ -36,9 +36,13 @@ LIMIT $limit
 
 TOP_ENTITIES_EDGES_CYPHER = """
 UNWIND $ids AS aid
-MATCH (a:Entity {id: aid})-[r]-(b:Entity)
-WHERE b.id IN $ids AND id(a) < id(b)
-RETURN id(r) AS rid, a.id AS source, b.id AS target, type(r) AS type
+MATCH (a:Entity {id: aid})<-[:REFERENCES]-(c:Chunk)-[:REFERENCES]->(b:Entity)
+WHERE b.id IN $ids AND a.id < b.id
+WITH a, b, count(DISTINCT c) AS shared
+RETURN a.id + '|' + b.id AS rid,
+       a.id AS source, b.id AS target,
+       'CO_MENTIONED' AS type,
+       shared
 """
 
 # Plan 5 — 1-hop expansion of arbitrary node ids, capped per seed via subquery.
@@ -49,15 +53,15 @@ RETURN id(r) AS rid, a.id AS source, b.id AS target, type(r) AS type
 # fine at project scale (typical project < 10k nodes).
 SUBGRAPH_CYPHER = """
 MATCH (s) WHERE s.id IN $seeds AND s.project_id = $pid
-WITH collect(DISTINCT s) AS seedNodes, $cap AS cap
+WITH collect(DISTINCT s) AS seedNodes
 UNWIND seedNodes AS s
 CALL {
-  WITH s, cap
+  WITH s
   MATCH (s)-[r]-(n)
   WHERE n.project_id = s.project_id
   RETURN r, n
   ORDER BY coalesce(n.pagerank_global, 0.0) DESC
-  LIMIT cap
+  LIMIT $cap
 }
 WITH seedNodes,
      collect(DISTINCT {
