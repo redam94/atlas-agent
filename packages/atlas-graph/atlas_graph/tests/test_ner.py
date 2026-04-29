@@ -26,7 +26,8 @@ def _ok_response(entities: list[dict]) -> httpx.Response:
             }
         ]
     }
-    return httpx.Response(200, json=body)
+    request = httpx.Request("POST", "http://lms.local/v1/chat/completions")
+    return httpx.Response(200, json=body, request=request)
 
 
 @pytest.mark.asyncio
@@ -79,8 +80,9 @@ async def test_extract_batch_filters_unknown_types_and_empty_names():
 @pytest.mark.asyncio
 async def test_extract_batch_retries_on_5xx_then_succeeds():
     client = AsyncMock(spec=httpx.AsyncClient)
+    request = httpx.Request("POST", "http://lms.local/v1/chat/completions")
     client.post.side_effect = [
-        httpx.Response(503),
+        httpx.Response(503, request=request),
         _ok_response([{"name": "CircleK", "type": "CLIENT"}]),
     ]
     extractor = NerExtractor(client=client, base_url="http://lms.local/v1", max_entities=20)
@@ -94,7 +96,8 @@ async def test_extract_batch_retries_on_5xx_then_succeeds():
 @pytest.mark.asyncio
 async def test_extract_batch_raises_after_second_failure():
     client = AsyncMock(spec=httpx.AsyncClient)
-    client.post.side_effect = [httpx.Response(500), httpx.Response(500)]
+    request = httpx.Request("POST", "http://lms.local/v1/chat/completions")
+    client.post.side_effect = [httpx.Response(500, request=request), httpx.Response(500, request=request)]
     extractor = NerExtractor(client=client, base_url="http://lms.local/v1", max_entities=20)
 
     with pytest.raises(NerFailure):
@@ -104,7 +107,8 @@ async def test_extract_batch_raises_after_second_failure():
 @pytest.mark.asyncio
 async def test_extract_batch_raises_on_persistent_malformed_json():
     client = AsyncMock(spec=httpx.AsyncClient)
-    bad = httpx.Response(200, json={"choices": [{"message": {"content": "not-json"}}]})
+    request = httpx.Request("POST", "http://lms.local/v1/chat/completions")
+    bad = httpx.Response(200, json={"choices": [{"message": {"content": "not-json"}}]}, request=request)
     client.post.side_effect = [bad, bad]
     extractor = NerExtractor(client=client, base_url="http://lms.local/v1", max_entities=20)
 

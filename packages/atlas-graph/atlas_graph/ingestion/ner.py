@@ -132,12 +132,7 @@ class NerExtractor:
                 )
                 if resp.status_code >= 500:
                     raise NerFailure(f"LM Studio HTTP {resp.status_code}")
-                if resp.status_code >= 400:
-                    raise httpx.HTTPStatusError(
-                        f"HTTP {resp.status_code}",
-                        request=None,  # type: ignore
-                        response=resp,
-                    )
+                resp.raise_for_status()
                 content = resp.json()["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
                 return self._validate(parsed.get("entities", []))
