@@ -30,11 +30,11 @@ async def seeded_project(real_graph_store, isolated_project_id):
             CREATE (d:Document {id: $doc, project_id: $pid, title: "Doc", source_type: "markdown"})
             CREATE (c1:Chunk {id: $c1, project_id: $pid, document_id: $doc, chunk_index: 0, text: "alpha"})
             CREATE (c2:Chunk {id: $c2, project_id: $pid, document_id: $doc, chunk_index: 1, text: "beta"})
-            CREATE (e1:Entity {id: $e1, project_id: $pid, label: "E1", entity_type: "PERSON",
+            CREATE (e1:Entity {id: $e1, project_id: $pid, name: "E1", type: "PERSON",
                               pagerank_global: 0.5, mention_count: 2})
-            CREATE (e2:Entity {id: $e2, project_id: $pid, label: "E2", entity_type: "ORG",
+            CREATE (e2:Entity {id: $e2, project_id: $pid, name: "E2", type: "ORG",
                               pagerank_global: 0.3, mention_count: 1})
-            CREATE (e3:Entity {id: $e3, project_id: $pid, label: "E3", entity_type: "CONCEPT",
+            CREATE (e3:Entity {id: $e3, project_id: $pid, name: "E3", type: "CONCEPT",
                               pagerank_global: 0.1, mention_count: 1})
             CREATE (d)-[:HAS_CHUNK]->(c1)
             CREATE (d)-[:HAS_CHUNK]->(c2)

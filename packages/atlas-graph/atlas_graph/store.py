@@ -27,7 +27,7 @@ log = structlog.get_logger("atlas.graph.store")
 # Plan 5 — UI subgraph fetches.
 TOP_ENTITIES_CYPHER = """
 MATCH (e:Entity {project_id: $pid})
-RETURN e.id AS id, e.label AS label, e.entity_type AS entity_type,
+RETURN e.id AS id, e.name AS label, e.type AS entity_type,
        coalesce(e.pagerank_global, 0.0) AS pagerank,
        coalesce(e.mention_count, 0) AS mention_count
 ORDER BY pagerank DESC
@@ -73,7 +73,7 @@ WITH DISTINCT node, allRels
 RETURN
   node.id AS id,
   labels(node)[0] AS type,
-  coalesce(node.label, node.title, left(coalesce(node.text, ''), 80), '') AS label,
+  coalesce(node.name, node.label, node.title, left(coalesce(node.text, ''), 80), '') AS label,
   node.pagerank_global AS pagerank,
   CASE labels(node)[0]
     WHEN 'Chunk' THEN {
@@ -87,7 +87,7 @@ RETURN
       source_url: node.source_url
     }
     WHEN 'Entity' THEN {
-      entity_type: node.entity_type,
+      entity_type: node.type,
       mention_count: coalesce(node.mention_count, 0)
     }
     ELSE {}
