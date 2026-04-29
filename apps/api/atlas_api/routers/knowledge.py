@@ -21,6 +21,7 @@ from atlas_core.db.converters import (
     knowledge_node_from_orm,
 )
 from atlas_core.db.orm import IngestionJobORM, KnowledgeNodeORM, ProjectORM
+from atlas_graph import GraphStore
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.models.graph import (
     GraphEdge,
@@ -51,7 +52,6 @@ from atlas_api.deps import (
     get_session,
     get_settings,
 )
-from atlas_graph import GraphStore
 
 router = APIRouter(tags=["knowledge"])
 
@@ -201,7 +201,7 @@ async def search(
     return await retriever.retrieve(RetrievalQuery(project_id=project_id, text=query, top_k=top_k))
 
 
-# --- Graph (explorer) ----
+# --- Graph (explorer) ----------------------------------------------------
 
 def _to_graph_node(raw: dict) -> GraphNode:
     return GraphNode(

@@ -1,12 +1,12 @@
 """Integration tests for GET /api/v1/knowledge/graph (Plan 5)."""
 
 from unittest.mock import AsyncMock
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from atlas_core.db.orm import ProjectORM
 
-from atlas_api.deps import get_graph_store, get_retriever
+from atlas_api.deps import get_graph_store
 from atlas_api.main import app
 
 
