@@ -21,7 +21,8 @@ def to_reference_param(project_id: UUID, chunk_id: UUID, e: Entity) -> dict:
 
 MERGE_ENTITIES_CYPHER = (
     "UNWIND $entities AS row "
-    "MERGE (e:Entity {project_id: row.project_id, name: row.name, type: row.type})"
+    "MERGE (e:Entity {project_id: row.project_id, name: row.name, type: row.type}) "
+    "ON CREATE SET e.id = toString(randomUUID())"
 )
 
 

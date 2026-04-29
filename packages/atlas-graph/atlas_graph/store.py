@@ -24,6 +24,81 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger("atlas.graph.store")
 
+# Plan 5 — UI subgraph fetches.
+TOP_ENTITIES_CYPHER = """
+MATCH (e:Entity {project_id: $pid})
+RETURN e.id AS id, e.name AS label, e.type AS entity_type,
+       coalesce(e.pagerank_global, 0.0) AS pagerank,
+       coalesce(e.mention_count, 0) AS mention_count
+ORDER BY pagerank DESC
+LIMIT $limit
+"""
+
+TOP_ENTITIES_EDGES_CYPHER = """
+UNWIND $ids AS aid
+MATCH (a:Entity {id: aid})<-[:REFERENCES]-(c:Chunk)-[:REFERENCES]->(b:Entity)
+WHERE b.id IN $ids AND a.id < b.id
+WITH a, b, count(DISTINCT c) AS shared
+RETURN a.id + '|' + b.id AS rid,
+       a.id AS source, b.id AS target,
+       'CO_MENTIONED' AS type,
+       shared
+"""
+
+# Plan 5 — 1-hop expansion of arbitrary node ids, capped per seed via subquery.
+#
+# Note: the seed MATCH is intentionally label-less — seeds can be a mix of
+# Document/Chunk/Entity. UUID seeds make cross-label id collisions impossible.
+# This trades label-scoped indexes for the flexibility of mixed-type seeds;
+# fine at project scale (typical project < 10k nodes).
+SUBGRAPH_CYPHER = """
+MATCH (s) WHERE s.id IN $seeds AND s.project_id = $pid
+WITH collect(DISTINCT s) AS seedNodes
+UNWIND seedNodes AS s
+CALL {
+  WITH s
+  MATCH (s)-[r]-(n)
+  WHERE n.project_id = s.project_id
+  RETURN r, n
+  ORDER BY coalesce(n.pagerank_global, 0.0) DESC
+  LIMIT $cap
+}
+WITH seedNodes,
+     collect(DISTINCT {
+       id: toString(elementId(r)),
+       source: startNode(r).id,
+       target: endNode(r).id,
+       type: type(r)
+     }) AS allRels,
+     collect(DISTINCT n) AS neighborNodes
+WITH seedNodes + neighborNodes AS allNodes, allRels
+UNWIND allNodes AS node
+WITH DISTINCT node, allRels
+RETURN
+  node.id AS id,
+  labels(node)[0] AS type,
+  coalesce(node.name, node.label, node.title, left(coalesce(node.text, ''), 80), '') AS label,
+  node.pagerank_global AS pagerank,
+  CASE labels(node)[0]
+    WHEN 'Chunk' THEN {
+      document_id: node.document_id,
+      chunk_index: node.chunk_index,
+      text_preview: left(coalesce(node.text, ''), 200)
+    }
+    WHEN 'Document' THEN {
+      title: node.title,
+      source_type: node.source_type,
+      source_url: node.source_url
+    }
+    WHEN 'Entity' THEN {
+      entity_type: node.type,
+      mention_count: coalesce(node.mention_count, 0)
+    }
+    ELSE {}
+  END AS metadata,
+  allRels AS rels
+"""
+
 
 def _serialize_metadata(metadata: dict) -> str:
     """JSON-encode the metadata dict for storage as a Neo4j string property.
@@ -239,6 +314,111 @@ class GraphStore:
         seed_prs = {UUID(r["id"]): float(r["pr"]) for r in seed_pr_raw}
 
         return merge_neighbors_with_budget(seeds, sn_rows, ref_rows, seed_prs, cap)
+
+    async def fetch_top_entities(
+        self,
+        *,
+        project_id: UUID,
+        limit: int = 30,
+    ) -> tuple[list[dict], list[dict]]:
+        """Top-N entities by PageRank for the project, plus edges between them.
+
+        Returns ``(nodes, edges)``. Each node is a dict with keys
+        ``id, type, label, pagerank, metadata``. Each edge has
+        ``id, source, target, type``. UUIDs are returned as strings — the
+        router converts them to Pydantic models.
+        """
+        async def _read(tx):
+            node_result = await tx.run(
+                TOP_ENTITIES_CYPHER, pid=str(project_id), limit=int(limit)
+            )
+            nodes_raw = await node_result.data()
+            if not nodes_raw:
+                return [], []
+            ids = [r["id"] for r in nodes_raw]
+            edge_result = await tx.run(TOP_ENTITIES_EDGES_CYPHER, ids=ids)
+            edges_raw = await edge_result.data()
+            return nodes_raw, edges_raw
+
+        async with self._session() as s:
+            nodes_raw, edges_raw = await s.execute_read(_read)
+
+        nodes = [
+            {
+                "id": r["id"],
+                "type": "Entity",
+                "label": r["label"],
+                "pagerank": float(r["pagerank"]),
+                "metadata": {
+                    "entity_type": r.get("entity_type"),
+                    "mention_count": int(r.get("mention_count") or 0),
+                },
+            }
+            for r in nodes_raw
+        ]
+        edges = [
+            {
+                "id": str(r["rid"]),
+                "source": r["source"],
+                "target": r["target"],
+                "type": r["type"],
+            }
+            for r in edges_raw
+        ]
+        return nodes, edges
+
+    async def fetch_subgraph_by_seeds(
+        self,
+        *,
+        project_id: UUID,
+        seed_ids: list[UUID],
+        neighbors_per_seed: int = 25,
+    ) -> tuple[list[dict], list[dict]]:
+        """1-hop expansion of arbitrary nodes by id.
+
+        Returns nodes (full dicts with id/type/label/metadata) and
+        deduped edges. Per-seed neighbor cap (with PageRank-DESC ordering for
+        determinism) prevents one high-degree seed from starving the others.
+        """
+        if not seed_ids:
+            return [], []
+
+        seed_strs = [str(s) for s in seed_ids]
+
+        async def _read(tx):
+            result = await tx.run(
+                SUBGRAPH_CYPHER, seeds=seed_strs, pid=str(project_id), cap=int(neighbors_per_seed)
+            )
+            return await result.data()
+
+        async with self._session() as s:
+            rows = await s.execute_read(_read)
+
+        nodes: dict[str, dict] = {}
+        edges: dict[str, dict] = {}
+        for row in rows:
+            node_id = row["id"]
+            if node_id not in nodes:
+                nodes[node_id] = {
+                    "id": node_id,
+                    "type": row["type"],
+                    "label": row["label"],
+                    "pagerank": float(row["pagerank"]) if row["pagerank"] is not None else None,
+                    "metadata": row["metadata"] or {},
+                }
+            for rel in row["rels"]:
+                if rel is None or rel.get("source") is None or rel.get("target") is None:
+                    continue
+                rel_id = rel["id"]
+                if rel_id not in edges:
+                    edges[rel_id] = {
+                        "id": rel_id,
+                        "source": rel["source"],
+                        "target": rel["target"],
+                        "type": rel["type"],
+                    }
+
+        return list(nodes.values()), list(edges.values())
 
     async def write_entities(
         self,

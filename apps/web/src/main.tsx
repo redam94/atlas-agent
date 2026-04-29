@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { App } from "./App";
 import { IndexRoute } from "./routes/home";
-import { ProjectRoute } from "./routes/project";
+import { ChatRoute, ProjectShell } from "./routes/project";
+import { ExplorerRoute } from "./routes/explorer";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -19,7 +20,14 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <IndexRoute /> },
-      { path: "projects/:id", element: <ProjectRoute /> },
+      {
+        path: "projects/:id",
+        element: <ProjectShell />,
+        children: [
+          { index: true, element: <ChatRoute /> },
+          { path: "explorer", element: <ExplorerRoute /> },
+        ],
+      },
     ],
   },
 ]);
