@@ -1,19 +1,23 @@
 """ATLAS FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+import atlas_graph
 import structlog
 from atlas_core.config import AtlasConfig
-from atlas_core.db.session import create_engine_from_config, create_session_factory
+from atlas_core.db.session import create_engine_from_config, create_session_factory, session_scope
 from atlas_core.logging import configure_logging
 from atlas_core.providers.anthropic import AnthropicProvider
 from atlas_core.providers.lmstudio import LMStudioProvider
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
+from atlas_graph import GraphStore, MigrationRunner, backfill_phase1
 from atlas_knowledge.embeddings import SentenceTransformersEmbedder
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.retrieval.retriever import Retriever
 from atlas_knowledge.vector.chroma import ChromaVectorStore
 from fastapi import FastAPI
+from neo4j import AsyncGraphDatabase
 
 from atlas_api import __version__
 from atlas_api.routers import knowledge as knowledge_router
@@ -69,6 +73,17 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = create_session_factory(engine)
     app.state.model_registry = registry
     app.state.model_router = ModelRouter(registry)
+    # Graph layer setup.
+    graph_driver = AsyncGraphDatabase.driver(
+        str(config.graph.uri),
+        auth=(config.graph.user, config.graph.password.get_secret_value()),
+    )
+    migrations_dir = Path(atlas_graph.__file__).parent / "schema" / "migrations"
+    applied = await MigrationRunner(graph_driver, migrations_dir).run_pending()
+    log.info("graph.migrations.applied", ids=applied)
+    graph_store = GraphStore(graph_driver)
+    app.state.graph_driver = graph_driver
+    app.state.graph_store = graph_store
     embedder = SentenceTransformersEmbedder()
     vector_store = ChromaVectorStore(
         persist_dir=config.db.chroma_path,
@@ -76,8 +91,23 @@ async def lifespan(app: FastAPI):
     )
     app.state.embedder = embedder
     app.state.vector_store = vector_store
-    app.state.ingestion_service = IngestionService(embedder=embedder, vector_store=vector_store)
+    app.state.ingestion_service = IngestionService(
+        embedder=embedder, vector_store=vector_store, graph_writer=graph_store,
+    )
     app.state.retriever = Retriever(embedder=embedder, vector_store=vector_store)
+    if config.graph.backfill_on_start:
+        log.info("graph.backfill.start")
+        async with session_scope(app.state.session_factory) as backfill_db:
+            result = await backfill_phase1(
+                db=backfill_db, graph=graph_store,
+                progress_cb=lambda b, t: log.info(
+                    "graph.backfill.progress", batch=b, total=t,
+                ),
+            )
+        log.info(
+            "graph.backfill.done",
+            documents=result.documents, chunks=result.chunks, batches=result.batches,
+        )
     log.info(
         "api.startup",
         environment=config.environment,
@@ -88,6 +118,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         log.info("api.shutdown")
+        await graph_store.close()
         await engine.dispose()
 
 

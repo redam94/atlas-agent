@@ -32,6 +32,17 @@ class DatabaseConfig(BaseSettings):
     chroma_path: str = "./data/chroma"
 
 
+class GraphConfig(BaseSettings):
+    """Neo4j configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="ATLAS_GRAPH__", extra="ignore")
+
+    uri: AnyUrl = Field(default="bolt://neo4j:7687")
+    user: str = "neo4j"
+    password: SecretStr  # required
+    backfill_on_start: bool = False
+
+
 class AtlasConfig(BaseSettings):
     """Top-level config. Construct once at app startup."""
 
@@ -46,6 +57,7 @@ class AtlasConfig(BaseSettings):
 
     llm: LLMConfig = Field(default_factory=LLMConfig)
     db: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    graph: GraphConfig = Field(default_factory=GraphConfig)
     environment: Literal["development", "production"] = "development"
     log_level: str = "INFO"
     user_id: str = "matt"

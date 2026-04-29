@@ -11,6 +11,7 @@ COPY pyproject.toml uv.lock ./
 COPY apps/api apps/api
 COPY packages/atlas-core packages/atlas-core
 COPY packages/atlas-knowledge packages/atlas-knowledge
+COPY packages/atlas-graph packages/atlas-graph
 
 # Create venv and sync all workspace packages.
 RUN --mount=type=cache,target=/root/.cache/uv \
