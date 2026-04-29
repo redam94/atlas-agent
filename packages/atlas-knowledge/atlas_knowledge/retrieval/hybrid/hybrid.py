@@ -102,18 +102,33 @@ class HybridRetriever:
                     "atlas.retrieval.stage_degraded",
                     stage="expansion", error=str(e),
                 )
-            candidate_ids: set[UUID] = set(seeds)
+            # Ordered candidates: seeds first (RRF order), then expansion-only
+            # neighbors sorted by UUID bytes. Stable across processes — important
+            # because rerank caps at RERANK_TOP_K and a non-deterministic set
+            # ordering would silently drop different candidates per run.
+            seen_ids: set[UUID] = set()
+            candidate_ids_ordered: list[UUID] = []
+            for cid in seeds:
+                if cid not in seen_ids:
+                    seen_ids.add(cid)
+                    candidate_ids_ordered.append(cid)
             if subgraph is not None:
-                candidate_ids.update(subgraph.nodes.keys())
+                neighbors_only = sorted(
+                    (cid for cid in subgraph.nodes if cid not in seen_ids),
+                    key=lambda u: u.bytes,
+                )
+                for cid in neighbors_only:
+                    seen_ids.add(cid)
+                    candidate_ids_ordered.append(cid)
 
             # Stage 5: hydrate (hard fail; no text means nothing to rerank or cite).
-            chunk_texts = await hydrate_mod.hydrate(session, candidate_ids)
+            chunk_texts = await hydrate_mod.hydrate(session, candidate_ids_ordered)
 
         if not chunk_texts:
             return RetrievalResult(query=query.text, chunks=[], degraded_stages=degraded)
 
         rerank_input = [
-            (cid, chunk_texts[cid].text) for cid in candidate_ids if cid in chunk_texts
+            (cid, chunk_texts[cid].text) for cid in candidate_ids_ordered if cid in chunk_texts
         ]
 
         # Stage 6: rerank (fallback: keep input order).
@@ -157,10 +172,11 @@ class HybridRetriever:
             pg = global_pr.get(cid, 0.0)
             log_pg = math.log1p(pg)
             ppr_score = ppr.get(cid, 0.0) if ppr_active else 1.0
-            final = rerank_score * log_pg * ppr_score
-            # If log_pg is 0 (no global pagerank), fall back to rerank score so we don't zero out everything.
-            if log_pg == 0.0:
-                final = rerank_score * (ppr_score if ppr_active else 1.0)
+            # Drop zero factors so a chunk missing one signal doesn't zero everything out.
+            # Active PPR with a missing-from-dict chunk would otherwise multiply by 0.
+            log_pg_factor = log_pg if log_pg > 0.0 else 1.0
+            ppr_factor = ppr_score if ppr_score > 0.0 else 1.0
+            final = rerank_score * log_pg_factor * ppr_factor
             scored.append((cid, final))
 
         scored.sort(key=lambda kv: kv[1], reverse=True)

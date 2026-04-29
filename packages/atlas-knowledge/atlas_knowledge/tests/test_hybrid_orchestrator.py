@@ -251,3 +251,76 @@ async def test_empty_ppr_dict_marks_personalized_pagerank_degraded(hybrid_with_m
     # Final scores are non-zero (rerank_score · log1p path)
     assert len(result.chunks) == 2
     assert all(c.score > 0 for c in result.chunks)
+
+
+@pytest.mark.asyncio
+async def test_candidate_order_is_deterministic_across_runs(hybrid_with_mocks, monkeypatch):
+    """Subgraph with >RERANK_TOP_K candidates must produce identical rerank input
+    regardless of Python hash ordering. This locks in the ordered-list semantics."""
+    from uuid import UUID
+    seed = uuid4()
+    # Build 50 expansion-only neighbors so rerank caps at top_k=30 and drops 20+.
+    neighbors = [uuid4() for _ in range(50)]
+    nodes = {seed: 0.5}
+    nodes.update({n: 0.1 for n in neighbors})
+
+    hybrid_with_mocks["vector_store"].search.return_value = [_scored(seed)]
+    from atlas_knowledge.retrieval.hybrid import bm25 as bm25_mod
+    from atlas_knowledge.retrieval.hybrid import hydrate as hydrate_mod
+
+    async def _bm25(*args, **kw):
+        return [(seed, 1)]
+    monkeypatch.setattr(bm25_mod, "search", _bm25)
+
+    captured_inputs: list[list[UUID]] = []
+
+    class _CapturingReranker:
+        async def rerank(self, query, candidates, top_k=30):
+            captured_inputs.append([cid for cid, _ in candidates])
+            return [(cid, 0.5) for cid, _ in candidates[:top_k]]
+
+    async def _hydrate(session, ids):
+        from datetime import UTC, datetime
+        return {
+            i: ChunkText(
+                id=i, user_id="matt", text="t",
+                parent_id=uuid4(), parent_title=None,
+                created_at=datetime.now(UTC),
+            )
+            for i in ids
+        }
+    monkeypatch.setattr(hydrate_mod, "hydrate", _hydrate)
+
+    hybrid_with_mocks["graph_store"].expand_chunks.return_value = ExpansionSubgraph(
+        nodes=nodes, edges=[]
+    )
+
+    from contextlib import asynccontextmanager
+    @asynccontextmanager
+    async def _fake_session(*_args, **_kwargs):
+        yield AsyncMock()
+    monkeypatch.setattr(
+        "atlas_knowledge.retrieval.hybrid.hybrid.session_scope", _fake_session
+    )
+
+    retr = HybridRetriever(
+        embedder=hybrid_with_mocks["embedder"],
+        vector_store=hybrid_with_mocks["vector_store"],
+        graph_store=hybrid_with_mocks["graph_store"],
+        reranker=_CapturingReranker(),  # type: ignore[arg-type]
+        session_factory=hybrid_with_mocks["session_factory"],
+    )
+
+    # Run retrieval twice with the same inputs; the candidate orderings must match.
+    await retr.retrieve(RetrievalQuery(project_id=uuid4(), text="q", top_k=5))
+    await retr.retrieve(RetrievalQuery(project_id=uuid4(), text="q", top_k=5))
+
+    assert len(captured_inputs) == 2
+    assert captured_inputs[0] == captured_inputs[1], (
+        "Rerank candidate ordering must be deterministic across runs."
+    )
+    # Seed is always first.
+    assert captured_inputs[0][0] == seed
+    # Neighbors are sorted by UUID bytes (deterministic across processes).
+    expected_neighbor_order = sorted(neighbors, key=lambda u: u.bytes)
+    assert captured_inputs[0][1:] == expected_neighbor_order
