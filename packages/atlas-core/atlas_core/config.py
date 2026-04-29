@@ -42,6 +42,14 @@ class GraphConfig(BaseSettings):
     password: SecretStr  # required
     backfill_on_start: bool = False
 
+    # Plan 3 knobs.
+    ner_enabled: bool = True
+    ner_max_entities_per_chunk: int = 20
+    semantic_near_threshold: float = 0.85
+    semantic_near_top_k: int = 50
+    temporal_near_window_days: int = 7
+    pagerank_enabled: bool = True
+
 
 class AtlasConfig(BaseSettings):
     """Top-level config. Construct once at app startup."""
