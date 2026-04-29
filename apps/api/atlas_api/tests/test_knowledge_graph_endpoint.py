@@ -65,3 +65,119 @@ async def test_unknown_project_returns_404(app_with_graph_overrides):
         params={"project_id": str(uuid4())},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_expand_mode_via_seed_node_ids(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+    seed = uuid4()
+    fake_graph_store.fetch_subgraph_by_seeds.return_value = (
+        [
+            {
+                "id": str(seed),
+                "type": "Entity",
+                "label": "Seed",
+                "pagerank": 0.0,
+                "metadata": {},
+            },
+            {
+                "id": "22222222-2222-2222-2222-222222222222",
+                "type": "Chunk",
+                "label": "neighbor chunk",
+                "pagerank": None,
+                "metadata": {"document_id": str(uuid4()), "chunk_index": 0, "text_preview": "..."},
+            },
+        ],
+        [
+            {
+                "id": "rel-1",
+                "source": str(seed),
+                "target": "22222222-2222-2222-2222-222222222222",
+                "type": "MENTIONS",
+            },
+        ],
+    )
+
+    resp = await app_with_graph_overrides.get(
+        "/api/v1/knowledge/graph",
+        params={"project_id": str(project.id), "seed_node_ids": str(seed)},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["mode"] == "expand"
+    assert len(body["nodes"]) == 2
+    assert len(body["edges"]) == 1
+    fake_graph_store.fetch_subgraph_by_seeds.assert_called_once()
+    args, kwargs = fake_graph_store.fetch_subgraph_by_seeds.call_args
+    assert kwargs["seed_ids"] == [seed]
+
+
+@pytest.mark.asyncio
+async def test_expand_mode_priority_node_ids_over_chunk_ids(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+    fake_graph_store.fetch_subgraph_by_seeds.return_value = ([], [])
+
+    node_seed = uuid4()
+    chunk_seed = uuid4()
+    resp = await app_with_graph_overrides.get(
+        "/api/v1/knowledge/graph",
+        params={
+            "project_id": str(project.id),
+            "seed_node_ids": str(node_seed),
+            "seed_chunk_ids": str(chunk_seed),
+        },
+    )
+    assert resp.status_code == 200
+    args, kwargs = fake_graph_store.fetch_subgraph_by_seeds.call_args
+    # node_seed wins over chunk_seed.
+    assert kwargs["seed_ids"] == [node_seed]
+
+
+@pytest.mark.asyncio
+async def test_node_types_filter_excludes_unwanted_types(
+    app_with_graph_overrides, db_session, fake_graph_store
+):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    fake_graph_store.fetch_subgraph_by_seeds.return_value = (
+        [
+            {"id": str(uuid4()), "type": "Entity", "label": "E", "pagerank": 0.0, "metadata": {}},
+            {"id": str(uuid4()), "type": "Chunk", "label": "C", "pagerank": None, "metadata": {}},
+        ],
+        [],
+    )
+
+    resp = await app_with_graph_overrides.get(
+        "/api/v1/knowledge/graph",
+        params={
+            "project_id": str(project.id),
+            "seed_node_ids": str(uuid4()),
+            "node_types": "Entity",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert all(n["type"] == "Entity" for n in body["nodes"])
+
+
+@pytest.mark.asyncio
+async def test_unknown_node_types_returns_422(app_with_graph_overrides, db_session):
+    project = ProjectORM(user_id="matt", name="P", default_model="claude-sonnet-4-6")
+    db_session.add(project)
+    await db_session.flush()
+
+    resp = await app_with_graph_overrides.get(
+        "/api/v1/knowledge/graph",
+        params={"project_id": str(project.id), "node_types": "Bogus"},
+    )
+    assert resp.status_code == 422

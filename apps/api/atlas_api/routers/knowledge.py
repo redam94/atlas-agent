@@ -222,6 +222,40 @@ def _to_graph_edge(raw: dict) -> GraphEdge:
     )
 
 
+def _build_graph_response(
+    *,
+    mode: str,
+    nodes_raw: list[dict],
+    edges_raw: list[dict],
+    cap: int,
+    types_filter: set[str] | None,
+    hit_node_ids: list[UUID] | None = None,
+    degraded_stages: list[str] | None = None,
+) -> GraphResponse:
+    """Build a GraphResponse from raw nodes and edges with filtering and truncation."""
+    truncated = len(nodes_raw) > cap
+    nodes_raw = nodes_raw[:cap]
+    nodes = [_to_graph_node(n) for n in nodes_raw]
+    if types_filter:
+        nodes = [n for n in nodes if n.type in types_filter]
+    kept = {n.id for n in nodes}
+    edges = [
+        _to_graph_edge(e)
+        for e in edges_raw
+        if UUID(e["source"]) in kept and UUID(e["target"]) in kept
+    ]
+    return GraphResponse(
+        nodes=nodes,
+        edges=edges,
+        meta=GraphMeta(
+            mode=mode,
+            truncated=truncated,
+            hit_node_ids=hit_node_ids or [],
+            degraded_stages=degraded_stages or [],
+        ),
+    )
+
+
 @router.get("/knowledge/graph", response_model=GraphResponse)
 async def get_knowledge_graph(
     project_id: UUID,
@@ -256,26 +290,38 @@ async def get_knowledge_graph(
                 detail=f"unknown node_types: {sorted(unknown)}",
             )
 
-    # Mode discrimination — top_entities only for Task 4.
-    if q is None and not seed_node_ids and not seed_chunk_ids:
-        cap = limit if limit is not None else 30
+    # Expand mode — seed_node_ids beats seed_chunk_ids.
+    if seed_node_ids or seed_chunk_ids:
+        raw_seeds = seed_node_ids or seed_chunk_ids or ""
+        try:
+            seed_uuids = [UUID(s.strip()) for s in raw_seeds.split(",") if s.strip()]
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail="invalid seed UUID") from e
+        cap = limit if limit is not None else 50
         cap = min(cap, 200)
-        nodes_raw, edges_raw = await graph_store.fetch_top_entities(
-            project_id=project_id, limit=cap
+        nodes_raw, edges_raw = await graph_store.fetch_subgraph_by_seeds(
+            project_id=project_id,
+            seed_ids=seed_uuids,
+            neighbors_per_seed=25,
         )
-        truncated = len(nodes_raw) >= cap
-        nodes = [_to_graph_node(n) for n in nodes_raw]
-        if types_filter:
-            nodes = [n for n in nodes if n.type in types_filter]
-            kept = {n.id for n in nodes}
-            edges = [_to_graph_edge(e) for e in edges_raw if UUID(e["source"]) in kept and UUID(e["target"]) in kept]
-        else:
-            edges = [_to_graph_edge(e) for e in edges_raw]
-        return GraphResponse(
-            nodes=nodes,
-            edges=edges,
-            meta=GraphMeta(mode="top_entities", truncated=truncated),
+        return _build_graph_response(
+            mode="expand",
+            nodes_raw=nodes_raw,
+            edges_raw=edges_raw,
+            cap=cap,
+            types_filter=types_filter,
         )
 
-    # search and expand modes implemented in subsequent tasks.
-    raise HTTPException(status_code=501, detail="not implemented yet")
+    # Top-entities mode (default).
+    cap = limit if limit is not None else 30
+    cap = min(cap, 200)
+    nodes_raw, edges_raw = await graph_store.fetch_top_entities(
+        project_id=project_id, limit=cap
+    )
+    return _build_graph_response(
+        mode="top_entities",
+        nodes_raw=nodes_raw,
+        edges_raw=edges_raw,
+        cap=cap,
+        types_filter=types_filter,
+    )
