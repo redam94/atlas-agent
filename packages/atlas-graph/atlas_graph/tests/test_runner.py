@@ -174,3 +174,23 @@ async def test_run_pending_classifies_extended_index_types_as_ddl(tmp_path: Path
     assert any("CREATE FULLTEXT INDEX" in c for c in captured)
     assert any("CREATE VECTOR INDEX" in c for c in captured)
     assert any("MERGE (m:Migration" in c for c in captured)
+
+
+@pytest.mark.asyncio
+async def test_runner_applies_002_entities_and_edges_real_dir(tmp_path: Path):
+    """Migration 002 is discovered, parsed (DDL + write split), and applied."""
+    real_dir = (
+        Path(__file__).resolve().parent.parent / "schema" / "migrations"
+    )
+    driver, session = _mock_driver_with_session(applied_ids=[])
+    runner = MigrationRunner(driver, real_dir)
+    applied = await runner.run_pending()
+    assert "002" in applied
+
+    # Verify file content directly.
+    cypher = (real_dir / "002_entities_and_edges.cypher").read_text()
+    assert "CREATE CONSTRAINT entity_project_name_type" in cypher
+    assert "CREATE INDEX entity_project_id" in cypher
+    assert "CREATE INDEX entity_type" in cypher
+    assert "WHERE d.created_at IS NULL" in cypher
+    assert "SET d.created_at = datetime()" in cypher
