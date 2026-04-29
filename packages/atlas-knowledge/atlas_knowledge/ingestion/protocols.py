@@ -58,3 +58,11 @@ class GraphWriter(Protocol):
         *,
         pairs: Sequence[tuple[UUID, UUID, float]],
     ) -> None: ...
+
+    async def build_temporal_near(
+        self,
+        *,
+        project_id: UUID,
+        document_id: UUID,
+        window_days: int,
+    ) -> None: ...

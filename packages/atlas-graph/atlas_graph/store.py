@@ -218,6 +218,30 @@ class GraphStore:
 
         await self._with_retry(_do)
 
+    async def build_temporal_near(
+        self,
+        *,
+        project_id: UUID,
+        document_id: UUID,
+        window_days: int,
+    ) -> None:
+        """MERGE undirected TEMPORAL_NEAR edges between same-project Documents within N days.
+
+        Both endpoints must have a non-null created_at. The signed delta check
+        handles both directions: new doc ingested before or after existing docs.
+        """
+        from atlas_graph.ingestion.temporal import TEMPORAL_NEAR_CYPHER
+
+        async def _do(tx: AsyncTransaction) -> None:
+            await tx.run(
+                TEMPORAL_NEAR_CYPHER,
+                project_id=str(project_id),
+                document_id=str(document_id),
+                window_days=int(window_days),
+            )
+
+        await self._with_retry(_do)
+
     @asynccontextmanager
     async def _session(self):
         async with self._driver.session() as s:
