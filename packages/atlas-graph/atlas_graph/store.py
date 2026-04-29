@@ -190,6 +190,34 @@ class GraphStore:
 
         await self._with_retry(_do)
 
+    async def merge_semantic_near(
+        self,
+        *,
+        pairs: Sequence[tuple[UUID, UUID, float]],
+    ) -> None:
+        """MERGE undirected SEMANTICALLY_NEAR edges with cosine on the relation.
+
+        Caller is expected to canonicalize ``(a, b)`` so the same pair is not
+        passed twice; we don't dedupe inside this method to keep it cheap.
+        """
+        if not pairs:
+            return
+        params = [
+            {"a": str(a), "b": str(b), "cosine": float(score)}
+            for (a, b, score) in pairs
+        ]
+
+        async def _do(tx: AsyncTransaction) -> None:
+            await tx.run(
+                "UNWIND $pairs AS p "
+                "MATCH (x:Chunk {id: p.a}), (y:Chunk {id: p.b}) "
+                "MERGE (x)-[r:SEMANTICALLY_NEAR]-(y) "
+                "SET r.cosine = p.cosine",
+                pairs=params,
+            )
+
+        await self._with_retry(_do)
+
     @asynccontextmanager
     async def _session(self):
         async with self._driver.session() as s:

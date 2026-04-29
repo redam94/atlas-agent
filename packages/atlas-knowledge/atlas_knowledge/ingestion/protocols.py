@@ -52,3 +52,9 @@ class GraphWriter(Protocol):
         project_id: UUID,
         chunks: Sequence[ChunkWithTextLike],
     ) -> None: ...
+
+    async def merge_semantic_near(
+        self,
+        *,
+        pairs: Sequence[tuple[UUID, UUID, float]],
+    ) -> None: ...
