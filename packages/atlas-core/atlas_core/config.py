@@ -51,6 +51,15 @@ class GraphConfig(BaseSettings):
     pagerank_enabled: bool = True
 
 
+class RetrievalConfig(BaseSettings):
+    """Plan 4 hybrid retrieval configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="ATLAS_RETRIEVAL__", extra="ignore")
+
+    mode: Literal["vector", "hybrid"] = "hybrid"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
 class AtlasConfig(BaseSettings):
     """Top-level config. Construct once at app startup."""
 
@@ -66,6 +75,7 @@ class AtlasConfig(BaseSettings):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     db: DatabaseConfig = Field(default_factory=DatabaseConfig)
     graph: GraphConfig = Field(default_factory=GraphConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     environment: Literal["development", "production"] = "development"
     log_level: str = "INFO"
     user_id: str = "matt"

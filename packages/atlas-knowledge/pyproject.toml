@@ -5,6 +5,7 @@ description = "ATLAS knowledge: RAG, embeddings, vector store, ingestion"
 requires-python = ">=3.13"
 dependencies = [
     "atlas-core",
+    "atlas-graph",
     "pydantic>=2.10",
     "sentence-transformers>=3.3",
     "chromadb>=0.5",
@@ -12,6 +13,8 @@ dependencies = [
     "anyio>=4.6",
     "playwright>=1.45,<2",
     "trafilatura>=1.12,<2",
+    "igraph>=0.11",
+    "sqlalchemy>=2.0",
 ]
 
 [build-system]

@@ -31,6 +31,7 @@ class RetrievalResult(AtlasModel):
 
     query: str
     chunks: list[ScoredChunk]
+    degraded_stages: list[str] = Field(default_factory=list)
 
 
 class RagContext(AtlasModel):
