@@ -109,9 +109,7 @@ Query parameters:
       "type": "Entity",
       "label": "Llama 3",
       "pagerank": 0.0123,
-      "metadata": {
-        "node_type_specific": "fields"
-      }
+      "metadata": { "entity_type": "PRODUCT", "mention_count": 12 }
     }
   ],
   "edges": [
@@ -130,6 +128,13 @@ Query parameters:
   }
 }
 ```
+
+`metadata` is a free-form object whose keys depend on the node type:
+- `Document`: `{ "title": "...", "source_type": "pdf|markdown|url", "source_url": "..." }`
+- `Chunk`: `{ "document_id": "uuid", "chunk_index": 0, "text_preview": "first ~200 chars" }`
+- `Entity`: `{ "entity_type": "PERSON|ORG|CONCEPT|...", "mention_count": 7 }`
+
+The FE side panel renders `metadata` as a key-value list, so the backend can add fields without an FE change.
 
 Field semantics:
 - `nodes[].type` ∈ `{"Document", "Chunk", "Entity"}` for v1. Plan 6 will add `"Note"`.
@@ -295,7 +300,7 @@ Vitest + React Testing Library:
 
 ## 7. Acceptance criteria
 
-1. Opening `/projects/:id/explorer` for a project that has been ingested shows ~30 entities laid out by force-directed layout, sized by PageRank.
+1. Opening `/projects/:id/explorer` for a project that has been ingested shows up to 30 entities (or fewer if the project has fewer) laid out by force-directed layout, sized by PageRank.
 2. Typing a query and pressing Enter swaps the canvas to a hit-centric subgraph; matching chunks show a gold border.
 3. Clicking any node opens the side panel with that node's metadata and outgoing edges.
 4. The panel's Expand button adds 1-hop neighbors of the selected node to the canvas without resetting layout, capped at 25 new neighbors per click.
