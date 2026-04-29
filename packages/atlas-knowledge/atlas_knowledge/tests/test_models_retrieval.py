@@ -122,3 +122,14 @@ def test_ingestion_job_construction():
         created_at=datetime.now(UTC),
     )
     assert job.completed_at is None
+
+
+def test_retrieval_result_degraded_stages_default_empty():
+    """RetrievalResult.degraded_stages defaults to [] for backward compatibility."""
+    result = RetrievalResult(query="q", chunks=[])
+    assert result.degraded_stages == []
+
+
+def test_retrieval_result_degraded_stages_accepts_values():
+    result = RetrievalResult(query="q", chunks=[], degraded_stages=["expansion", "rerank"])
+    assert result.degraded_stages == ["expansion", "rerank"]

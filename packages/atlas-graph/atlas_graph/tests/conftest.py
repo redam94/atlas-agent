@@ -112,6 +112,21 @@ class _FakeSession:
 
     async def execute_read(self, fn):
         tx = AsyncMock()
+
+        async def _run(query, **kwargs):
+            self._driver.calls.append(_Call(query=query, kwargs=kwargs))
+            # Return an empty async iterator wrapped as result; tests assert on calls only.
+            class _R:
+                async def __aiter__(self):
+                    if False:
+                        yield  # pragma: no cover
+
+                async def data(self):
+                    return []
+
+            return _R()
+
+        tx.run = _run
         return await fn(tx)
 
     async def run(self, query, **kwargs):

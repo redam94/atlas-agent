@@ -15,7 +15,7 @@ from atlas_core.db.session import session_scope
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
 from atlas_graph import GraphStore
 from atlas_knowledge.ingestion.service import IngestionService
-from atlas_knowledge.retrieval.retriever import Retriever
+from atlas_knowledge.retrieval import RetrieverProtocol
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
@@ -48,7 +48,7 @@ def get_ingestion_service(connection: HTTPConnection) -> IngestionService:
     return connection.app.state.ingestion_service
 
 
-def get_retriever(connection: HTTPConnection) -> Retriever:
+def get_retriever(connection: HTTPConnection) -> RetrieverProtocol:
     return connection.app.state.retriever
 
 

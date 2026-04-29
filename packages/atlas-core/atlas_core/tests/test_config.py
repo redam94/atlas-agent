@@ -118,3 +118,28 @@ def test_graph_config_plan3_env_override(monkeypatch):
     assert cfg.graph.semantic_near_top_k == 10
     assert cfg.graph.temporal_near_window_days == 3
     assert cfg.graph.pagerank_enabled is False
+
+
+def test_retrieval_config_defaults(monkeypatch):
+    from atlas_core.config import AtlasConfig
+
+    # Required env vars for sibling configs
+    monkeypatch.setenv("ATLAS_DB__DATABASE_URL", "postgresql://x:y@localhost/db")
+    monkeypatch.setenv("ATLAS_GRAPH__PASSWORD", "test-password-1234")
+
+    cfg = AtlasConfig()
+    assert cfg.retrieval.mode == "hybrid"
+    assert cfg.retrieval.reranker_model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
+def test_retrieval_config_env_override(monkeypatch):
+    from atlas_core.config import AtlasConfig
+
+    monkeypatch.setenv("ATLAS_DB__DATABASE_URL", "postgresql://x:y@localhost/db")
+    monkeypatch.setenv("ATLAS_GRAPH__PASSWORD", "test-password-1234")
+    monkeypatch.setenv("ATLAS_RETRIEVAL__MODE", "vector")
+    monkeypatch.setenv("ATLAS_RETRIEVAL__RERANKER_MODEL", "custom/model-name")
+
+    cfg = AtlasConfig()
+    assert cfg.retrieval.mode == "vector"
+    assert cfg.retrieval.reranker_model == "custom/model-name"
