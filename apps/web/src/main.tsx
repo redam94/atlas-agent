@@ -6,6 +6,8 @@ import { App } from "./App";
 import { IndexRoute } from "./routes/home";
 import { ChatRoute, ProjectShell } from "./routes/project";
 import { ExplorerRoute } from "./routes/explorer";
+import { NoteEditor } from "./components/notes/note-editor";
+import { NotesIndex, NotesRoute } from "./routes/notes";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -26,6 +28,14 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <ChatRoute /> },
           { path: "explorer", element: <ExplorerRoute /> },
+          {
+            path: "notes",
+            element: <NotesRoute />,
+            children: [
+              { index: true, element: <NotesIndex /> },
+              { path: ":noteId", element: <NoteEditor /> },
+            ],
+          },
         ],
       },
     ],

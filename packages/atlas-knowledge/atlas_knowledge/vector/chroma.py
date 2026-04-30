@@ -95,6 +95,15 @@ class ChromaVectorStore(VectorStore):
 
         await anyio.to_thread.run_sync(_do_delete)
 
+    def delete_by_parent(self, *, project_id: UUID, parent_id: UUID) -> None:
+        """Delete all chunk vectors whose metadata.parent_id matches."""
+        self._collection.delete(
+            where={"$and": [
+                {"project_id": str(project_id)},
+                {"parent_id": str(parent_id)},
+            ]}
+        )
+
     @staticmethod
     def _scored_chunks_from_chroma(result: dict[str, Any]) -> list[ScoredChunk]:
         # Chroma returns parallel lists, each wrapped in a 1-element outer list

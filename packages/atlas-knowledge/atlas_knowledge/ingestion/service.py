@@ -28,6 +28,17 @@ _TEXT_PREVIEW_LEN = 200
 
 
 @dataclass(frozen=True)
+class IngestionResult:
+    """What `IngestionService.ingest` returns.
+
+    `document_id` is None only on the empty-text path where no Document row is
+    created (extremely rare; happens when the parser returns an empty body).
+    """
+    job_id: UUID
+    document_id: UUID | None
+
+
+@dataclass(frozen=True)
 class _ChunkSpecAdapter:
     """Duck-typed match for atlas_graph.protocols.ChunkSpec.
 
@@ -96,7 +107,7 @@ class IngestionService:
         parsed: ParsedDocument,
         source_type: str,  # "markdown" | "pdf" | "url"
         source_filename: str | None,
-    ) -> UUID:
+    ) -> IngestionResult:
         """Run the pipeline. Returns the job_id. Always commits a job row,
         even on failure (with status='failed' + error)."""
         job = IngestionJobORM(
@@ -149,7 +160,7 @@ class IngestionService:
                 job.completed_at = datetime.now(UTC)
                 job.node_ids = [str(doc_row.id)]
                 await db.flush()
-                return job.id
+                return IngestionResult(job_id=job.id, document_id=doc_row.id)
 
             # 3. Persist chunk rows (so they get IDs we can use for the vector store).
             for raw in raw_chunks:
@@ -257,7 +268,7 @@ class IngestionService:
             job.node_ids = [str(doc_row.id)] + [str(r.id) for r in chunk_rows]
             await db.flush()
             log.info("ingest.complete", job_id=str(job.id), chunks=len(chunk_rows))
-            return job.id
+            return IngestionResult(job_id=job.id, document_id=doc_row.id)
 
         except Exception as e:
             log.exception("ingest.failed", job_id=str(job.id))
@@ -286,7 +297,37 @@ class IngestionService:
             job.error = str(e)
             job.completed_at = datetime.now(UTC)
             await db.flush()
-            return job.id
+            return IngestionResult(job_id=job.id, document_id=doc_row.id if doc_row is not None else None)
+
+    async def cleanup_document(
+        self,
+        *,
+        db: AsyncSession,
+        project_id: UUID,
+        document_id: UUID,
+    ) -> None:
+        """Cascade delete a Document across Postgres + Chroma + Neo4j.
+
+        - Postgres: deletes the parent KnowledgeNodeORM; chunks cascade via
+          parent_id FK ON DELETE CASCADE.
+        - Chroma: deletes by metadata filter project_id + parent_id.
+        - Neo4j: delegates to GraphStore.cleanup_document if a graph writer
+          is configured; no-op otherwise.
+        """
+        # Chroma — delete chunk vectors before we lose the parent_id FK.
+        self._vector_store.delete_by_parent(project_id=project_id, parent_id=document_id)
+
+        # Postgres — cascade deletes chunks via parent_id FK.
+        doc_row = await db.get(KnowledgeNodeORM, document_id)
+        if doc_row is not None:
+            await db.delete(doc_row)
+            await db.flush()
+
+        # Neo4j — delegate.
+        if self._graph_writer is not None:
+            await self._graph_writer.cleanup_document(
+                project_id=project_id, document_id=document_id
+            )
 
     async def _compute_semantic_near_pairs(
         self,

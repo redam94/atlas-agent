@@ -38,3 +38,7 @@ class VectorStore(ABC):
     @abstractmethod
     async def delete(self, ids: list[UUID]) -> None:
         """Remove chunks by ID."""
+
+    @abstractmethod
+    def delete_by_parent(self, *, project_id: UUID, parent_id: UUID) -> None:
+        """Delete all chunk vectors whose metadata.parent_id matches."""

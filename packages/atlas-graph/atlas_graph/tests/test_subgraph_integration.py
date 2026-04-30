@@ -92,3 +92,64 @@ async def test_fetch_subgraph_by_seeds_expands_one_hop(
     edge_types = {e["type"] for e in edges}
     assert "MENTIONS" in edge_types
     assert "HAS_CHUNK" in edge_types
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+async def test_tag_note_creates_tagged_with_edges(
+    real_graph_store, isolated_project_id
+):
+    pid = isolated_project_id
+    note_doc_id = uuid4()
+    ent1, ent2 = uuid4(), uuid4()
+
+    async with real_graph_store._driver.session() as s:
+        await s.run(
+            """
+            CREATE (n:Document {id: $note, project_id: $pid, title: "My note", type: "note"})
+            CREATE (e1:Entity {id: $e1, project_id: $pid, name: "X", type: "PERSON"})
+            CREATE (e2:Entity {id: $e2, project_id: $pid, name: "Y", type: "ORG"})
+            """,
+            note=str(note_doc_id), pid=str(pid),
+            e1=str(ent1), e2=str(ent2),
+        )
+
+    await real_graph_store.tag_note(note_id=note_doc_id, entity_ids=[ent1, ent2])
+
+    # Idempotent — calling twice doesn't duplicate edges.
+    await real_graph_store.tag_note(note_id=note_doc_id, entity_ids=[ent1, ent2])
+
+    async with real_graph_store._driver.session() as s:
+        result = await s.run(
+            """
+            MATCH (n:Document {id: $note})-[r:TAGGED_WITH]->(e:Entity)
+            RETURN count(r) AS count
+            """,
+            note=str(note_doc_id),
+        )
+        records = await result.data()
+
+    assert records[0]["count"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+async def test_list_entities_prefix_match(real_graph_store, isolated_project_id):
+    pid = isolated_project_id
+    async with real_graph_store._driver.session() as s:
+        await s.run(
+            """
+            CREATE (e1:Entity {id: $e1, project_id: $pid, name: "Llama 3", type: "PRODUCT", pagerank_global: 0.9})
+            CREATE (e2:Entity {id: $e2, project_id: $pid, name: "Llama 2", type: "PRODUCT", pagerank_global: 0.5})
+            CREATE (e3:Entity {id: $e3, project_id: $pid, name: "Mistral", type: "PRODUCT", pagerank_global: 0.7})
+            """,
+            pid=str(pid),
+            e1=str(uuid4()), e2=str(uuid4()), e3=str(uuid4()),
+        )
+    rows = await real_graph_store.list_entities(project_id=pid, prefix="Lla", limit=10)
+    names = [r["name"] for r in rows]
+    assert names == ["Llama 3", "Llama 2"]  # ordered by pagerank DESC
+
+    # Empty prefix returns all 3, ordered by pagerank.
+    rows = await real_graph_store.list_entities(project_id=pid, prefix="", limit=10)
+    assert [r["name"] for r in rows] == ["Llama 3", "Mistral", "Llama 2"]

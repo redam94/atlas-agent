@@ -25,6 +25,7 @@ from atlas_graph import GraphStore
 from atlas_graph.errors import GraphUnavailableError
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.models.graph import (
+    EntitySuggestion,
     GraphEdge,
     GraphMeta,
     GraphNode,
@@ -76,7 +77,7 @@ async def ingest_endpoint(
     if await db.get(ProjectORM, payload.project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
     parsed = parse_markdown(payload.text or "", title=None)
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db,
         user_id=settings.user_id,
         project_id=payload.project_id,
@@ -84,7 +85,7 @@ async def ingest_endpoint(
         source_type="markdown",
         source_filename=payload.source_filename,
     )
-    job_row = await db.get(IngestionJobORM, job_id)
+    job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
@@ -102,7 +103,7 @@ async def ingest_pdf_endpoint(
         raise HTTPException(status_code=404, detail="project not found")
     data = await file.read()
     parsed = parse_pdf(data, source_filename=file.filename)
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db,
         user_id=settings.user_id,
         project_id=project_id,
@@ -110,7 +111,7 @@ async def ingest_pdf_endpoint(
         source_type="pdf",
         source_filename=file.filename,
     )
-    job_row = await db.get(IngestionJobORM, job_id)
+    job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
@@ -138,7 +139,7 @@ async def ingest_url_endpoint(
         raise HTTPException(status_code=502, detail=f"could not extract content: {e}") from e
     except Exception as e:  # noqa: BLE001 — Playwright errors are varied
         raise HTTPException(status_code=502, detail=f"fetch failed: {e}") from e
-    job_id = await service.ingest(
+    result = await service.ingest(
         db=db,
         user_id=settings.user_id,
         project_id=payload.project_id,
@@ -146,7 +147,7 @@ async def ingest_url_endpoint(
         source_type="url",
         source_filename=url,
     )
-    job_row = await db.get(IngestionJobORM, job_id)
+    job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
     return ingestion_job_from_orm(job_row)
@@ -181,12 +182,18 @@ async def list_nodes(
 async def delete_node(
     node_id: UUID,
     db: AsyncSession = Depends(get_session),
+    service: IngestionService = Depends(get_ingestion_service),
 ) -> None:
     row = await db.get(KnowledgeNodeORM, node_id)
     if row is None:
         raise HTTPException(status_code=404, detail="node not found")
-    await db.delete(row)
-    await db.flush()
+    if row.type == "document":
+        await service.cleanup_document(
+            db=db, project_id=row.project_id, document_id=row.id
+        )
+    else:
+        await db.delete(row)
+        await db.flush()
 
 
 # --- Search (debug) ------------------------------------------------------
@@ -377,3 +384,38 @@ async def get_knowledge_graph(
         cap=cap,
         types_filter=types_filter,
     )
+
+
+# --- Entities (mention autocomplete) -------------------------------------
+
+
+@router.get("/knowledge/entities", response_model=list[EntitySuggestion])
+async def list_entities(
+    project_id: UUID,
+    prefix: str = "",
+    limit: int = 10,
+    db: AsyncSession = Depends(get_session),
+    graph_store: GraphStore = Depends(get_graph_store),
+) -> list[EntitySuggestion]:
+    """Prefix-match entities for the @-mention dropdown.
+
+    Empty prefix returns top-N entities by PageRank.
+    """
+    project = await db.get(ProjectORM, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    try:
+        rows = await graph_store.list_entities(
+            project_id=project_id, prefix=prefix, limit=min(limit, 50)
+        )
+    except GraphUnavailableError as e:
+        raise HTTPException(status_code=503, detail="graph_unavailable") from e
+    return [
+        EntitySuggestion(
+            id=UUID(r["id"]),
+            name=r["name"] or "",
+            entity_type=r.get("entity_type"),
+            pagerank=float(r.get("pagerank") or 0.0),
+        )
+        for r in rows
+    ]

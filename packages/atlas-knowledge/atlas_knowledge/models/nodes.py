@@ -12,6 +12,7 @@ from pydantic import Field
 class KnowledgeNodeType(StrEnum):
     DOCUMENT = "document"
     CHUNK = "chunk"
+    NOTE = "note"
 
 
 class KnowledgeNode(AtlasModel):
