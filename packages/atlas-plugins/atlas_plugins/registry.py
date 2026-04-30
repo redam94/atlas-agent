@@ -15,7 +15,9 @@ log = structlog.get_logger("atlas.plugins.registry")
 # Future plans append their plugin classes here:
 #   from atlas_plugins.registry import REGISTERED_PLUGINS
 #   REGISTERED_PLUGINS.append(DiscordPlugin)
-REGISTERED_PLUGINS: list[type[AtlasPlugin]] = []  # FakePlugin appended in Task 4
+from atlas_plugins._fake import FakePlugin
+
+REGISTERED_PLUGINS: list[type[AtlasPlugin]] = [FakePlugin]
 
 
 class PluginRegistry:
