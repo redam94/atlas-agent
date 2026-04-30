@@ -11,8 +11,8 @@ export type Citation = {
 
 export type StreamEvent =
   | { type: "chat.token"; payload: { token: string }; sequence: number }
-  | { type: "chat.tool_use"; payload: { name: string; arguments: Record<string, unknown>; id?: string }; sequence: number }
-  | { type: "chat.tool_result"; payload: { id?: string; result: unknown }; sequence: number }
+  | { type: "chat.tool_use"; payload: { call_id: string; tool_name: string; started_at: string }; sequence: number }
+  | { type: "chat.tool_result"; payload: { call_id: string; ok: boolean; duration_ms: number }; sequence: number }
   | { type: "rag.context"; payload: { citations: Citation[] }; sequence: number }
   | { type: "chat.done"; payload: Record<string, unknown>; sequence: number }
   | { type: "chat.error"; payload: { code: string; message: string }; sequence: number };
