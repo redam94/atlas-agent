@@ -90,9 +90,10 @@ class AnthropicProvider(BaseModel):
                         if idx in tool_use_blocks:
                             buf = tool_use_blocks.pop(idx)
                             try:
-                                args = json.loads(buf["input_json"]) if buf["input_json"] else {}
+                                parsed = json.loads(buf["input_json"]) if buf["input_json"] else {}
                             except json.JSONDecodeError:
-                                args = {}
+                                parsed = {}
+                            args = parsed if isinstance(parsed, dict) else {}
                             yield ModelEvent(
                                 type=ModelEventType.TOOL_CALL,
                                 data={"id": buf["id"], "tool": buf["name"], "args": args},
