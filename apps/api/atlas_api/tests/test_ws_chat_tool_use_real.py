@@ -3,11 +3,39 @@
 Skipped unless ATLAS_RUN_ANTHROPIC_INTEGRATION=1 and ANTHROPIC_API_KEY is set.
 """
 
+from __future__ import annotations
+
+import contextlib
 import os
 from uuid import uuid4
 
+import httpx
 import pytest
 from atlas_core.db.orm import ProjectORM
+from httpx_ws import aconnect_ws
+from httpx_ws.transport import ASGIWebSocketTransport
+
+from atlas_api.main import app
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+@contextlib.asynccontextmanager
+async def make_ws_client():
+    """Per-call async context manager that yields an AsyncClient backed by
+    ASGIWebSocketTransport.  Entering and exiting in the same task avoids
+    CancelScope cross-task RuntimeError."""
+    async with httpx.AsyncClient(
+        transport=ASGIWebSocketTransport(app=app), base_url="http://test"
+    ) as client:
+        yield client
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 pytestmark = pytest.mark.skipif(
     os.getenv("ATLAS_RUN_ANTHROPIC_INTEGRATION") != "1"
@@ -18,7 +46,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.asyncio
 @pytest.mark.slow
-async def test_real_sonnet_calls_fake_echo(app_client, db_session):
+async def test_real_sonnet_calls_fake_echo(db_session):
     """Real Sonnet/Opus call: ask it to use fake.echo. Assert tool_use event + 'banana' in text."""
     project = ProjectORM(
         user_id="matt",
@@ -30,7 +58,10 @@ async def test_real_sonnet_calls_fake_echo(app_client, db_session):
     await db_session.flush()
     session_id = uuid4()
 
-    async with app_client.websocket_connect(f"/api/v1/ws/{session_id}") as ws:
+    async with (
+        make_ws_client() as client,
+        aconnect_ws(f"ws://test/api/v1/ws/{session_id}", client=client) as ws,
+    ):
         await ws.send_json(
             {
                 "type": "chat.message",
