@@ -11,6 +11,32 @@ from atlas_core.models.llm import ModelEvent, ModelEventType, ModelSpec
 from atlas_core.providers.base import BaseModel
 
 
+def _approx_tokens(content: Any) -> int:
+    """Approximate token count from message content.
+
+    content may be:
+    - str  (normal user/assistant/system turns)
+    - list (tool_use / tool_result blocks with dicts)
+    """
+    if isinstance(content, str):
+        return len(content.split()) or 1
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if isinstance(block, dict):
+                # Count text/content fields if present
+                for key in ("text", "content", "input"):
+                    val = block.get(key, "")
+                    if isinstance(val, str):
+                        total += len(val.split()) or 1
+                    elif isinstance(val, dict):
+                        total += 2  # rough estimate for JSON structures
+            else:
+                total += 1
+        return max(total, 1)
+    return 1
+
+
 class FakeProvider(BaseModel):
     """Streams a fixed sequence of token chunks, then emits ``done`` with usage.
 
@@ -74,7 +100,7 @@ class FakeProvider(BaseModel):
                     yield ModelEvent(type=ModelEventType.TOKEN, data={"text": text})
 
                 # Approximate input tokens from message content lengths
-                input_tokens = sum(len(m.get("content", "").split()) for m in messages)
+                input_tokens = sum(_approx_tokens(m.get("content", "")) for m in messages)
 
                 yield ModelEvent(
                     type=ModelEventType.DONE,
@@ -90,7 +116,7 @@ class FakeProvider(BaseModel):
                 )
             else:
                 # Exhausted turns; just return DONE
-                input_tokens = sum(len(m.get("content", "").split()) for m in messages)
+                input_tokens = sum(_approx_tokens(m.get("content", "")) for m in messages)
                 yield ModelEvent(
                     type=ModelEventType.DONE,
                     data={
@@ -111,7 +137,7 @@ class FakeProvider(BaseModel):
                 yield ModelEvent(type=ModelEventType.TOKEN, data={"text": chunk})
 
             # Approximate input tokens from message content lengths
-            input_tokens = sum(len(m.get("content", "").split()) for m in messages)
+            input_tokens = sum(_approx_tokens(m.get("content", "")) for m in messages)
 
             yield ModelEvent(
                 type=ModelEventType.DONE,

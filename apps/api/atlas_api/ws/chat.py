@@ -7,18 +7,22 @@ Per-message flow:
   4. Build the system prompt via SystemPromptBuilder.
   5. Route to a provider via ModelRouter.
   6. Stream ModelEvents → translate to StreamEvents → send to client.
+     For Anthropic providers: run a tool-use loop (max 10 turns).
   7. On done: persist user + assistant Message rows + ModelUsage row.
 """
 
 from __future__ import annotations
 
+import json
 import time
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import structlog
 from atlas_core.config import AtlasConfig
 from atlas_core.db.orm import MessageORM, ModelUsageORM, ProjectORM, SessionORM
-from atlas_core.models.llm import ModelEventType
+from atlas_core.models.llm import ModelEventType, ToolSchema
 from atlas_core.models.messages import ChatRequest, StreamEvent, StreamEventType
 from atlas_core.models.sessions import MessageRole
 from atlas_core.prompts.builder import SystemPromptBuilder
@@ -27,17 +31,35 @@ from atlas_core.providers.registry import ModelRouter
 from atlas_knowledge.models.retrieval import RetrievalQuery
 from atlas_knowledge.retrieval.builder import build_rag_context
 from atlas_knowledge.retrieval.retriever import Retriever
+from atlas_plugins import PluginRegistry
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from atlas_api.deps import get_model_router, get_retriever, get_session, get_settings
+from atlas_api.deps import (
+    get_model_router,
+    get_plugin_registry,
+    get_retriever,
+    get_session,
+    get_settings,
+)
 
 router = APIRouter()
 log = structlog.get_logger("atlas.api.ws")
 prompt_builder = SystemPromptBuilder(prompt_registry)
 
 CONTEXT_WINDOW_TURNS = 20
+MAX_TOOL_TURNS = 10
+
+
+def _to_anthropic_tool(s: ToolSchema) -> dict[str, Any]:
+    """Convert a ToolSchema to the Anthropic API tool dict format."""
+    return {"name": s.name, "description": s.description, "input_schema": s.parameters}
+
+
+def _now_iso() -> str:
+    """Return current UTC time as ISO 8601 string."""
+    return datetime.now(UTC).isoformat()
 
 
 @router.websocket("/ws/{session_id}")
@@ -48,6 +70,7 @@ async def chat_ws(
     model_router: ModelRouter = Depends(get_model_router),
     retriever: Retriever = Depends(get_retriever),
     settings: AtlasConfig = Depends(get_settings),
+    plugin_registry: PluginRegistry | None = Depends(get_plugin_registry),
 ) -> None:
     await websocket.accept()
     sequence = 0
@@ -87,7 +110,15 @@ async def chat_ws(
 
             try:
                 sequence = await _handle_chat_message(
-                    websocket, session_id, req, db, model_router, retriever, settings, sequence
+                    websocket,
+                    session_id,
+                    req,
+                    db,
+                    model_router,
+                    retriever,
+                    settings,
+                    plugin_registry,
+                    sequence,
                 )
             except Exception as e:
                 log.exception("ws.unhandled_error")
@@ -109,6 +140,7 @@ async def _handle_chat_message(
     model_router: ModelRouter,
     retriever: Retriever,
     settings: AtlasConfig,
+    plugin_registry: PluginRegistry | None,
     sequence: int,
 ) -> int:
     # 1. Resolve the Project (must exist for this user)
@@ -160,7 +192,9 @@ async def _handle_chat_message(
             )
 
     system_prompt = prompt_builder.build(_project_to_pydantic(project))
-    model_messages = _assemble_messages(system_prompt, history_rows, req.text, rag_block=rag_block)
+    messages_for_provider = _assemble_messages(
+        system_prompt, history_rows, req.text, rag_block=rag_block
+    )
 
     # 4. Persist the user turn before streaming the assistant response
     user_row = MessageORM(
@@ -185,32 +219,158 @@ async def _handle_chat_message(
             sequence,
         )
 
-    # 6. Stream events
+    # 6. Build tool list (Anthropic only; registry may be None in tests that don't wire it)
+    tools_payload: list[dict[str, Any]] | None = None
+    if plugin_registry is not None and provider.spec.provider == "anthropic":
+        enabled = list(project.enabled_plugins or [])
+        schemas = plugin_registry.get_tool_schemas(enabled=enabled)
+        if schemas:
+            tools_payload = [_to_anthropic_tool(s) for s in schemas]
+
+    # 7. Stream events — tool-use loop (max MAX_TOOL_TURNS turns)
     assistant_text_parts: list[str] = []
     usage: dict | None = None
     started = time.monotonic()
+    tool_turn = 0
+    all_tool_calls_across_turns: list[dict[str, Any]] = []
+    error_occurred = False
 
-    async for event in provider.stream(
-        messages=model_messages,
-        temperature=req.temperature,
-    ):
-        if event.type == ModelEventType.TOKEN:
-            text = event.data.get("text", "")
-            assistant_text_parts.append(text)
-            sequence = await _send(websocket, StreamEventType.TOKEN, {"token": text}, sequence)
-        elif event.type == ModelEventType.TOOL_CALL:
-            sequence = await _send(websocket, StreamEventType.TOOL_CALL, event.data, sequence)
-        elif event.type == ModelEventType.TOOL_RESULT:
-            sequence = await _send(websocket, StreamEventType.TOOL_RESULT, event.data, sequence)
-        elif event.type == ModelEventType.ERROR:
-            return await _send(websocket, StreamEventType.ERROR, event.data, sequence)
-        elif event.type == ModelEventType.DONE:
-            usage = event.data.get("usage", {})
+    while True:
+        pending_tool_calls: list[dict[str, Any]] = []
+
+        async for event in provider.stream(
+            messages=messages_for_provider,
+            tools=tools_payload,
+            temperature=req.temperature,
+        ):
+            if event.type == ModelEventType.TOKEN:
+                text = event.data.get("text", "")
+                assistant_text_parts.append(text)
+                sequence = await _send(
+                    websocket, StreamEventType.TOKEN, {"token": text}, sequence
+                )
+            elif event.type == ModelEventType.TOOL_CALL:
+                call = event.data  # {"id": ..., "tool": ..., "args": ...}
+                sequence = await _send(
+                    websocket,
+                    StreamEventType.TOOL_CALL,
+                    {
+                        "tool_name": call["tool"],
+                        "call_id": call["id"],
+                        "started_at": _now_iso(),
+                    },
+                    sequence,
+                )
+                pending_tool_calls.append(call)
+            elif event.type == ModelEventType.ERROR:
+                sequence = await _send(websocket, StreamEventType.ERROR, event.data, sequence)
+                error_occurred = True
+                break
+            elif event.type == ModelEventType.DONE:
+                usage = event.data.get("usage", {})
+
+        if error_occurred:
+            break
+
+        # No tool calls this turn — the model responded with text; we're done.
+        if not pending_tool_calls:
+            break
+
+        # Dispatch each tool call (plugin_registry is always set when tool calls arrive,
+        # because tools_payload is only built when registry is not None)
+        tool_turn += 1
+        tool_results = []
+        for call in pending_tool_calls:
+            call_started = time.monotonic()
+            if plugin_registry is None:
+                # Safety: no registry to dispatch to; treat as error
+                from atlas_core.models.llm import ToolResult as _ToolResult
+
+                result = _ToolResult(
+                    call_id=call["id"],
+                    tool=call["tool"],
+                    result=None,
+                    error="no plugin registry available",
+                )
+            else:
+                result = await plugin_registry.invoke(
+                    call["tool"], call["args"], call_id=call["id"]
+                )
+            duration_ms = int((time.monotonic() - call_started) * 1000)
+            ok = result.error is None
+            sequence = await _send(
+                websocket,
+                StreamEventType.TOOL_RESULT,
+                {
+                    "tool_name": call["tool"],
+                    "call_id": call["id"],
+                    "ok": ok,
+                    "duration_ms": duration_ms,
+                },
+                sequence,
+            )
+            tool_results.append(result)
+            # Accumulate for persistence on the assistant row
+            all_tool_calls_across_turns.append(
+                {
+                    "call_id": call["id"],
+                    "tool": call["tool"],
+                    "args": call["args"],
+                    "result": result.result if ok else None,
+                    "error": result.error,
+                }
+            )
+
+        # Append assistant tool_use turn + user tool_result turn to the message list
+        messages_for_provider.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": c["id"],
+                        "name": c["tool"],
+                        "input": c["args"],
+                    }
+                    for c in pending_tool_calls
+                ],
+            }
+        )
+        messages_for_provider.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": r.call_id,
+                        "content": (
+                            json.dumps(r.result) if r.error is None else f"Error: {r.error}"
+                        ),
+                        "is_error": r.error is not None,
+                    }
+                    for r in tool_results
+                ],
+            }
+        )
+
+        if tool_turn >= MAX_TOOL_TURNS:
+            # Force a final non-tool turn: drop tools, add a system instruction.
+            tools_payload = None
+            messages_for_provider.append(
+                {
+                    "role": "user",
+                    "content": "Tool call limit reached; respond to the user without using tools.",
+                }
+            )
+            # Loop one more time — will yield text only (no tools offered).
+
+    if error_occurred:
+        return sequence
 
     latency_ms = int((time.monotonic() - started) * 1000)
     full_assistant_text = "".join(assistant_text_parts)
 
-    # 7. Persist the assistant turn + usage
+    # 8. Persist the assistant turn + usage
     assistant_row = MessageORM(
         user_id=settings.user_id,
         session_id=session_id,
@@ -219,6 +379,7 @@ async def _handle_chat_message(
         rag_context=rag_citations,
         model=provider.spec.model_id,
         token_count=(usage or {}).get("output_tokens"),
+        tool_calls=all_tool_calls_across_turns if all_tool_calls_across_turns else None,
     )
     db.add(assistant_row)
 

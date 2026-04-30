@@ -57,8 +57,8 @@ def get_graph_store(connection: HTTPConnection) -> GraphStore:
     return connection.app.state.graph_store
 
 
-def get_plugin_registry(connection: HTTPConnection) -> PluginRegistry:
-    return connection.app.state.plugin_registry
+def get_plugin_registry(connection: HTTPConnection) -> PluginRegistry | None:
+    return getattr(connection.app.state, "plugin_registry", None)
 
 
 def get_credential_store(connection: HTTPConnection) -> CredentialStore:
