@@ -155,4 +155,93 @@ describe("useAtlasChat", () => {
 
     void result;
   });
+
+  it("appends pending ToolCall on chat.tool_use event", async () => {
+    const { result } = renderHook(
+      () => useAtlasChat({ session_id: "S6", project_id: "P1", model_id: "m" }),
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(FakeWS.instances.length).toBe(1));
+    const ws = FakeWS.instances[0];
+    await waitFor(() => expect(ws.readyState).toBe(1));
+
+    act(() => result.current.send("use the echo tool"));
+    act(() =>
+      ws.emit({
+        type: "chat.tool_use",
+        payload: { call_id: "tc_1", tool_name: "fake.echo", started_at: "2026-04-29T10:00:00Z" },
+        sequence: 0,
+      }),
+    );
+
+    expect(result.current.messages.at(-1)?.toolCalls).toEqual([
+      {
+        callId: "tc_1",
+        toolName: "fake.echo",
+        status: "pending",
+        startedAt: "2026-04-29T10:00:00Z",
+      },
+    ]);
+  });
+
+  it("updates ToolCall status and durationMs on chat.tool_result event", async () => {
+    const { result } = renderHook(
+      () => useAtlasChat({ session_id: "S7", project_id: "P1", model_id: "m" }),
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(FakeWS.instances.length).toBe(1));
+    const ws = FakeWS.instances[0];
+    await waitFor(() => expect(ws.readyState).toBe(1));
+
+    act(() => result.current.send("use the echo tool"));
+    act(() =>
+      ws.emit({
+        type: "chat.tool_use",
+        payload: { call_id: "tc_2", tool_name: "fake.echo", started_at: "2026-04-29T10:00:00Z" },
+        sequence: 0,
+      }),
+    );
+    act(() =>
+      ws.emit({
+        type: "chat.tool_result",
+        payload: { call_id: "tc_2", ok: true, duration_ms: 42 },
+        sequence: 1,
+      }),
+    );
+
+    expect(result.current.messages.at(-1)?.toolCalls).toEqual([
+      {
+        callId: "tc_2",
+        toolName: "fake.echo",
+        status: "ok",
+        startedAt: "2026-04-29T10:00:00Z",
+        durationMs: 42,
+      },
+    ]);
+  });
+
+  it("logs warning and ignores chat.tool_result with unknown call_id", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { result } = renderHook(
+      () => useAtlasChat({ session_id: "S8", project_id: "P1", model_id: "m" }),
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(FakeWS.instances.length).toBe(1));
+    const ws = FakeWS.instances[0];
+    await waitFor(() => expect(ws.readyState).toBe(1));
+
+    act(() => result.current.send("use the echo tool"));
+    act(() =>
+      ws.emit({
+        type: "chat.tool_result",
+        payload: { call_id: "unknown_tc", ok: true, duration_ms: 100 },
+        sequence: 0,
+      }),
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith("Received chat.tool_result for unknown call_id: unknown_tc");
+    expect(result.current.messages.at(-1)?.toolCalls).toBeUndefined();
+
+    warnSpy.mockRestore();
+  });
 });

@@ -4,6 +4,7 @@ import type { ChatMessage } from "@/hooks/use-atlas-chat";
 import { cn } from "@/lib/cn";
 import { MarkdownRenderer } from "./markdown/markdown-renderer";
 import { ToolUseCard } from "./tool-use/tool-use-card";
+import { ToolCallChip } from "./tool-call-chip";
 
 export function Message({ msg }: { msg: ChatMessage }) {
   const isUser = msg.role === "user";
@@ -34,6 +35,18 @@ export function Message({ msg }: { msg: ChatMessage }) {
           <span className="opacity-50">…</span>
         ) : (
           <>
+            {msg.toolCalls && msg.toolCalls.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1">
+                {msg.toolCalls.map((tc) => (
+                  <ToolCallChip
+                    key={tc.callId}
+                    toolName={tc.toolName}
+                    status={tc.status}
+                    durationMs={tc.durationMs}
+                  />
+                ))}
+              </div>
+            )}
             <MarkdownRenderer source={msg.content} />
             {msg.tool_cards?.map((c) => <ToolUseCard key={c.id} card={c} />)}
           </>

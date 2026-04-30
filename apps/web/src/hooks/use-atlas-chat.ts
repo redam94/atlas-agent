@@ -20,11 +20,20 @@ export type ToolCard = {
   result?: unknown;
 };
 
+export interface ToolCall {
+  callId: string;
+  toolName: string;
+  status: "pending" | "ok" | "error";
+  startedAt: string;
+  durationMs?: number;
+}
+
 export type ChatMessage = {
   client_id: string;
   role: "user" | "assistant" | "system";
   content: string;
   tool_cards?: ToolCard[];
+  toolCalls?: ToolCall[];
   finalized: boolean;
 };
 
@@ -102,26 +111,100 @@ export function useAtlasChat(opts: {
         setRagContext(event.payload.citations);
         return;
       }
-      if (isToolUse(event)) {
-        const id = event.payload.id ?? crypto.randomUUID();
+      // Handle new-style chat.tool_use: append pending ToolCall
+      // (has call_id, tool_name, started_at)
+      if (event.type === "chat.tool_use" && "call_id" in event.payload) {
+        const { call_id, tool_name, started_at } = event.payload as {
+          call_id: string;
+          tool_name: string;
+          started_at: string;
+        };
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!last || last.role !== "assistant") return prev;
+          const calls = last.toolCalls ?? [];
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              toolCalls: [
+                ...calls,
+                { callId: call_id, toolName: tool_name, status: "pending" as const, startedAt: started_at },
+              ],
+            },
+          ];
+        });
+        return;
+      }
+
+      // Handle old-style chat.tool_use: store in tool_cards
+      // (has name, arguments, optional id)
+      if (isToolUse(event) && "name" in event.payload) {
+        const payload = event.payload as unknown as { id?: string; name: string; arguments: Record<string, unknown> };
+        const id = payload.id ?? crypto.randomUUID();
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (!last || last.role !== "assistant") return prev;
           const cards = last.tool_cards ?? [];
           return [
             ...prev.slice(0, -1),
-            { ...last, tool_cards: [...cards, { id, name: event.payload.name, arguments: event.payload.arguments }] },
+            {
+              ...last,
+              tool_cards: [
+                ...cards,
+                {
+                  id,
+                  name: payload.name,
+                  arguments: payload.arguments,
+                },
+              ],
+            },
           ];
         });
         return;
       }
-      if (isToolResult(event)) {
-        const id = event.payload.id;
+
+      // Handle new-style chat.tool_result: update status and duration
+      // (has call_id, ok, duration_ms)
+      if (event.type === "chat.tool_result" && "call_id" in event.payload) {
+        const payload = event.payload as unknown as {
+          call_id: string;
+          ok: boolean;
+          duration_ms: number;
+        };
+        const { call_id, ok, duration_ms } = payload;
+        const newStatus: "ok" | "error" = ok ? "ok" : "error";
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (!last || !last.toolCalls) {
+            console.warn(`Received chat.tool_result for unknown call_id: ${call_id}`);
+            return prev;
+          }
+          const updated = last.toolCalls.map((tc) =>
+            tc.callId === call_id
+              ? { ...tc, status: newStatus, durationMs: duration_ms }
+              : tc,
+          );
+          // If call_id was not found, log warning
+          if (!last.toolCalls.some((tc) => tc.callId === call_id)) {
+            console.warn(`Received chat.tool_result for unknown call_id: ${call_id}`);
+          }
+          return [...prev.slice(0, -1), { ...last, toolCalls: updated }];
+        });
+        return;
+      }
+
+      // Handle old-style chat.tool_result: update tool_cards
+      // (has id, result)
+      if (isToolResult(event) && "id" in event.payload) {
+        const payload = event.payload as unknown as { id?: string; result: unknown };
+        const id = payload.id;
+        if (!id) return;
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (!last || !last.tool_cards) return prev;
           const updated = last.tool_cards.map((c) =>
-            c.id === id ? { ...c, result: event.payload.result } : c,
+            c.id === id ? { ...c, result: payload.result } : c,
           );
           return [...prev.slice(0, -1), { ...last, tool_cards: updated }];
         });

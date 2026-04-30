@@ -1,5 +1,6 @@
 """ATLAS FastAPI application entry point."""
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from atlas_knowledge.retrieval.hybrid.hybrid import HybridRetriever
 from atlas_knowledge.retrieval.hybrid.rerank import Reranker
 from atlas_knowledge.retrieval.retriever import Retriever
 from atlas_knowledge.vector.chroma import ChromaVectorStore
+from atlas_plugins import CredentialStore, PluginRegistry
+from atlas_plugins.credentials import SqlAlchemyBackend
+from atlas_plugins.registry import REGISTERED_PLUGINS
 from fastapi import FastAPI
 from neo4j import AsyncGraphDatabase
 
@@ -27,6 +31,7 @@ from atlas_api import __version__
 from atlas_api.routers import knowledge as knowledge_router
 from atlas_api.routers import models as models_router
 from atlas_api.routers import notes as notes_router
+from atlas_api.routers import plugins as plugins_router
 from atlas_api.routers import projects as projects_router
 from atlas_api.routers import sessions as sessions_router
 from atlas_api.ws import chat as ws_chat
@@ -144,6 +149,22 @@ async def lifespan(app: FastAPI):
             "graph.backfill.done",
             documents=result.documents, chunks=result.chunks, batches=result.batches,
         )
+    # Plugin framework setup (Phase 3, Plan 1).
+    master_key = os.getenv("ATLAS_PLUGINS__MASTER_KEY")
+    backend = SqlAlchemyBackend(
+        session_factory=lambda: session_scope(app.state.session_factory),
+    )
+    credential_store = CredentialStore(backend=backend, master_key=master_key)
+    plugins = [PluginCls(credentials=credential_store) for PluginCls in REGISTERED_PLUGINS]
+    plugin_registry = PluginRegistry(plugins)
+    await plugin_registry.warm()
+    app.state.credential_store = credential_store
+    app.state.plugin_registry = plugin_registry
+    log.info(
+        "plugins.lifespan_ready",
+        count=len(plugins),
+        master_key_present=master_key is not None,
+    )
     log.info(
         "api.startup",
         environment=config.environment,
@@ -173,6 +194,7 @@ app.include_router(ws_chat.router, prefix="/api/v1")
 app.include_router(knowledge_router.router, prefix="/api/v1")
 app.include_router(sessions_router.router, prefix="/api/v1")
 app.include_router(notes_router.router, prefix="/api/v1")
+app.include_router(plugins_router.router, prefix="/api/v1")
 
 
 @app.get("/health")
