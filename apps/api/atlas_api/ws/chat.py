@@ -52,9 +52,25 @@ CONTEXT_WINDOW_TURNS = 20
 MAX_TOOL_TURNS = 10
 
 
+# Anthropic's tool-name pattern is ^[a-zA-Z0-9_-]{1,128}$ — periods aren't
+# allowed. We use "<plugin>.<tool>" namespacing internally; encode `.` as
+# `__` on the wire to Anthropic, and decode back when we receive tool_use
+# events. The encoding is bidirectional and only crosses the SDK boundary.
+def _encode_tool_name(name: str) -> str:
+    return name.replace(".", "__")
+
+
+def _decode_tool_name(name: str) -> str:
+    return name.replace("__", ".")
+
+
 def _to_anthropic_tool(s: ToolSchema) -> dict[str, Any]:
     """Convert a ToolSchema to the Anthropic API tool dict format."""
-    return {"name": s.name, "description": s.description, "input_schema": s.parameters}
+    return {
+        "name": _encode_tool_name(s.name),
+        "description": s.description,
+        "input_schema": s.parameters,
+    }
 
 
 def _now_iso() -> str:
@@ -250,7 +266,10 @@ async def _handle_chat_message(
                     websocket, StreamEventType.TOKEN, {"token": text}, sequence
                 )
             elif event.type == ModelEventType.TOOL_CALL:
-                call = event.data  # {"id": ..., "tool": ..., "args": ...}
+                # Decode Anthropic's wire name (`fake__echo`) back to our
+                # internal namespaced form (`fake.echo`).
+                call = dict(event.data)  # {"id": ..., "tool": ..., "args": ...}
+                call["tool"] = _decode_tool_name(call["tool"])
                 sequence = await _send(
                     websocket,
                     StreamEventType.TOOL_CALL,
@@ -327,7 +346,7 @@ async def _handle_chat_message(
                     {
                         "type": "tool_use",
                         "id": c["id"],
-                        "name": c["tool"],
+                        "name": _encode_tool_name(c["tool"]),
                         "input": c["args"],
                     }
                     for c in pending_tool_calls
