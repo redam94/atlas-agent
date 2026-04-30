@@ -13,12 +13,18 @@ from typing import Any
 
 from atlas_core.models.llm import ToolSchema
 
-from atlas_plugins.base import AtlasPlugin
+from atlas_plugins.base import AtlasPlugin, HealthStatus
 
 
 class FakePlugin(AtlasPlugin):
     name = "fake"
     description = "Test plugin used to exercise the framework end-to-end."
+
+    async def health(self) -> HealthStatus:
+        # Override the default credentials-based health check: FakePlugin has
+        # no auth requirement, so it's always ok. This lets the chat handler
+        # actually see fake's tools without first registering dummy credentials.
+        return HealthStatus(ok=True)
 
     def get_tools(self) -> list[ToolSchema]:
         return [
