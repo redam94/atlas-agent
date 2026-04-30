@@ -62,6 +62,7 @@ class FakeProvider(BaseModel):
         self.error_on_call = error_on_call
         self.scripted_turns = scripted_turns
         self._turn_index = 0
+        self.stream_calls: list[dict] = []
 
     async def stream(
         self,
@@ -70,6 +71,7 @@ class FakeProvider(BaseModel):
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ) -> AsyncIterator[ModelEvent]:
+        self.stream_calls.append({"tools": tools, "messages": list(messages)})
         if self.error_on_call:
             yield ModelEvent(
                 type=ModelEventType.ERROR,

@@ -22,7 +22,7 @@ from uuid import UUID
 import structlog
 from atlas_core.config import AtlasConfig
 from atlas_core.db.orm import MessageORM, ModelUsageORM, ProjectORM, SessionORM
-from atlas_core.models.llm import ModelEventType, ToolSchema
+from atlas_core.models.llm import ModelEventType, ToolResult, ToolSchema
 from atlas_core.models.messages import ChatRequest, StreamEvent, StreamEventType
 from atlas_core.models.sessions import MessageRole
 from atlas_core.prompts.builder import SystemPromptBuilder
@@ -284,9 +284,7 @@ async def _handle_chat_message(
             call_started = time.monotonic()
             if plugin_registry is None:
                 # Safety: no registry to dispatch to; treat as error
-                from atlas_core.models.llm import ToolResult as _ToolResult
-
-                result = _ToolResult(
+                result = ToolResult(
                     call_id=call["id"],
                     tool=call["tool"],
                     result=None,

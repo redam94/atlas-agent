@@ -13,7 +13,8 @@ import httpx
 import pytest
 import pytest_asyncio
 from atlas_core.config import AtlasConfig
-from atlas_core.db.orm import ProjectORM
+from atlas_core.db.orm import MessageORM, ProjectORM
+from atlas_core.models.sessions import MessageRole
 from atlas_core.providers._fake import FakeProvider
 from atlas_core.providers.registry import ModelRegistry, ModelRouter
 from atlas_knowledge.embeddings import FakeEmbedder
@@ -23,6 +24,7 @@ from atlas_plugins import CredentialStore, FakePlugin, HealthStatus, InMemoryBac
 from cryptography.fernet import Fernet
 from httpx_ws import aconnect_ws
 from httpx_ws.transport import ASGIWebSocketTransport
+from sqlalchemy import select
 
 from atlas_api.deps import (
     get_credential_store,
@@ -154,6 +156,23 @@ async def test_single_tool_call_round_trip(db_session, tool_use_overrides):
         for e in events
     )
 
+    # Verify the assistant Message row's tool_calls field was populated.
+    await db_session.commit()  # ensure data is visible across the session boundary
+    result = await db_session.execute(
+        select(MessageORM).where(
+            MessageORM.session_id == session_id,
+            MessageORM.role == MessageRole.ASSISTANT.value,
+        )
+    )
+    assistant_rows = result.scalars().all()
+    assert len(assistant_rows) >= 1
+    # Find the row that has tool_calls (the latest assistant message).
+    rows_with_tools = [r for r in assistant_rows if r.tool_calls]
+    assert len(rows_with_tools) >= 1, "expected at least one assistant row with tool_calls populated"
+    latest = rows_with_tools[-1]
+    assert len(latest.tool_calls) == 1
+    assert latest.tool_calls[0]["tool"] == "fake.echo"
+
 
 @pytest.mark.asyncio
 async def test_ten_turn_cap_forces_final_summary(db_session, tool_use_overrides):
@@ -202,6 +221,20 @@ async def test_ten_turn_cap_forces_final_summary(db_session, tool_use_overrides)
     assert any(
         e["type"] == "chat.token" and "Stopped" in e["payload"].get("token", "") for e in events
     )
+
+    # The 11th call to provider.stream MUST have tools=None — this is the
+    # cap-firing assertion. Without it, the test would pass even if the cap
+    # logic were silently removed, because the scripted turn 10 has no
+    # tool_calls anyway.
+    assert len(fake_provider.stream_calls) == 11
+    assert fake_provider.stream_calls[10]["tools"] is None, (
+        "11th stream call must drop tools= per the 10-turn cap behavior"
+    )
+    # Sanity: prior 10 calls did pass tools.
+    for i in range(10):
+        assert fake_provider.stream_calls[i]["tools"] is not None, (
+            f"call {i}: tools should be set during the loop"
+        )
 
 
 @pytest.mark.asyncio
