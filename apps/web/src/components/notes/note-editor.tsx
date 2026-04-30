@@ -175,7 +175,10 @@ export function NoteEditor() {
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto p-6">
+      <div
+        className="flex-1 cursor-text overflow-y-auto p-6"
+        onClick={() => editor?.commands.focus()}
+      >
         <div className="mx-auto max-w-3xl">
           <EditorContent editor={editor} />
         </div>
