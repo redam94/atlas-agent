@@ -16,6 +16,7 @@ from atlas_core.providers.registry import ModelRegistry, ModelRouter
 from atlas_graph import GraphStore
 from atlas_knowledge.ingestion.service import IngestionService
 from atlas_knowledge.retrieval import RetrieverProtocol
+from atlas_plugins import CredentialStore, PluginRegistry
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
@@ -54,3 +55,11 @@ def get_retriever(connection: HTTPConnection) -> RetrieverProtocol:
 
 def get_graph_store(connection: HTTPConnection) -> GraphStore:
     return connection.app.state.graph_store
+
+
+def get_plugin_registry(connection: HTTPConnection) -> PluginRegistry:
+    return connection.app.state.plugin_registry
+
+
+def get_credential_store(connection: HTTPConnection) -> CredentialStore:
+    return connection.app.state.credential_store
