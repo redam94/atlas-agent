@@ -10,12 +10,14 @@ members = [
     "packages/atlas-core",
     "packages/atlas-knowledge",
     "packages/atlas-graph",
+    "packages/atlas-plugins",
 ]
 
 [tool.uv.sources]
 atlas-core = { workspace = true }
 atlas-knowledge = { workspace = true }
 atlas-graph = { workspace = true }
+atlas-plugins = { workspace = true }
 atlas-api = { workspace = true }
 
 [dependency-groups]
@@ -34,6 +36,7 @@ testpaths = [
     "packages/atlas-core/atlas_core/tests",
     "packages/atlas-knowledge/atlas_knowledge/tests",
     "packages/atlas-graph/atlas_graph/tests",
+    "packages/atlas-plugins/atlas_plugins/tests",
 ]
 asyncio_mode = "auto"
 python_files = ["test_*.py"]
