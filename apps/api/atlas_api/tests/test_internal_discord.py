@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -130,3 +130,36 @@ async def test_discord_status_returns_postgres_ok(app_client):
     body = resp.json()
     assert body["postgres"] == "ok"
     assert "running_jobs" in body
+
+
+@pytest.mark.asyncio
+async def test_mark_stale_notified_bulk_marks_old_jobs(app_client, db_session):
+    """Jobs completed > 10 min ago with notified_at=None should be marked notified."""
+    proj = ProjectORM(
+        id=uuid.uuid4(),
+        user_id="test-user",
+        name="test",
+        default_model="claude-haiku-4-5-20251001",
+        enabled_plugins=[],
+    )
+    db_session.add(proj)
+    await db_session.flush()
+
+    old_job = IngestionJobORM(
+        id=uuid.uuid4(),
+        user_id="test-user",
+        project_id=proj.id,
+        source_type="url",
+        status="completed",
+        completed_at=datetime.now(UTC) - timedelta(minutes=15),
+    )
+    db_session.add(old_job)
+    await db_session.flush()
+
+    resp = await app_client.post(
+        "/api/v1/internal/discord/jobs/mark_stale_notified",
+        headers={"X-Internal-Secret": SECRET},
+    )
+    assert resp.status_code == 200
+    await db_session.refresh(old_job)
+    assert old_job.notified_at is not None
