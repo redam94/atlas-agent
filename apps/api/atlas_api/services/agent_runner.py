@@ -13,21 +13,21 @@ import json
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 import structlog
 from atlas_core.models.llm import ModelEventType, ToolResult, ToolSchema
 from atlas_plugins import PluginRegistry
 from atlas_plugins.context import reset_interactive, set_interactive
-from datetime import UTC, datetime
 
 log = structlog.get_logger("atlas.api.agent_runner")
 
 MAX_TOOL_TURNS = 10
 
 
-class AgentEventType(str, Enum):
+class AgentEventType(StrEnum):
     TEXT_DELTA = "text_delta"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"

@@ -39,7 +39,7 @@ from atlas_api.deps import (
     get_session,
     get_settings,
 )
-from atlas_api.services.agent_runner import AgentEventType, to_anthropic_tool, run_tool_loop
+from atlas_api.services.agent_runner import AgentEventType, run_tool_loop, to_anthropic_tool
 
 router = APIRouter()
 log = structlog.get_logger("atlas.api.ws")

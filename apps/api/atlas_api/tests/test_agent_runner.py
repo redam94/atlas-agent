@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,7 +10,6 @@ from atlas_plugins import FakePlugin, HealthStatus, PluginRegistry
 from atlas_plugins.context import is_interactive
 
 from atlas_api.services.agent_runner import (
-    AgentEvent,
     AgentEventType,
     run_tool_loop,
     run_turn_collected,
