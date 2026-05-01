@@ -10,5 +10,6 @@ RUN uv sync --frozen --no-dev --package atlas-discord-bot
 
 FROM deps AS runtime
 COPY apps/discord-bot/atlas_discord_bot apps/discord-bot/atlas_discord_bot
+RUN uv sync --frozen --no-dev --package atlas-discord-bot
 WORKDIR /app/apps/discord-bot
 CMD ["uv", "run", "python", "-m", "atlas_discord_bot"]
