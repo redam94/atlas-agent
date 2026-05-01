@@ -23,13 +23,13 @@ def upgrade() -> None:
         sa.Column("notified_at", sa.TIMESTAMP(timezone=True), nullable=True),
     )
     op.create_index(
-        "ix_ingestion_jobs_status_notified_at",
+        "ingestion_jobs_status_notified_at_idx",
         "ingestion_jobs",
         ["status", "notified_at"],
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_ingestion_jobs_status_notified_at", table_name="ingestion_jobs")
+    op.drop_index("ingestion_jobs_status_notified_at_idx", table_name="ingestion_jobs")
     op.drop_column("ingestion_jobs", "notified_at")
     op.drop_column("ingestion_jobs", "discord_channel_id")

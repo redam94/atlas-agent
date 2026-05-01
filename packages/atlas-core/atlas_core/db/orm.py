@@ -176,6 +176,10 @@ class IngestionJobORM(Base):
 
     __tablename__ = "ingestion_jobs"
 
+    __table_args__ = (
+        Index("ingestion_jobs_status_notified_at_idx", "status", "notified_at"),
+    )
+
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         primary_key=True,
