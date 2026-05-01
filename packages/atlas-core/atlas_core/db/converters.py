@@ -87,6 +87,8 @@ def ingestion_job_from_orm(row: IngestionJobORM):
 
     from atlas_knowledge.models.ingestion import IngestionJob, IngestionStatus, SourceType
 
+    # discord_channel_id and notified_at are intentionally omitted — they are internal
+    # fields used by the notification poller and not part of the public job contract.
     return IngestionJob(
         id=row.id,
         user_id=row.user_id,

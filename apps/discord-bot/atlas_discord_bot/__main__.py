@@ -67,11 +67,11 @@ async def main() -> None:
 
     fallback = settings.notify_channel_id
 
+    # Any task failure propagates immediately so the container crashes and Docker restarts it.
     await asyncio.gather(
         client.start(settings.bot_token),
         server.serve(),
         run_poller(bot=client, api_client=api_client, fallback_channel_id=fallback),
-        return_exceptions=True,
     )
 
 

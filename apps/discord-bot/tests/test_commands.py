@@ -74,6 +74,9 @@ async def test_ingest_happy_path_posts_queued():
     )
 
     interaction.response.defer.assert_called_once()
+    api.ingest_url.assert_called_once_with(
+        PROJECT_ID, "https://example.com", discord_channel_id="99999"
+    )
     text = interaction.followup.send.call_args[0][0]
     assert "queued" in text.lower() or "job-abc" in text
 
