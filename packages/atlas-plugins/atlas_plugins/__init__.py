@@ -2,6 +2,7 @@
 
 from atlas_plugins._fake import FakePlugin
 from atlas_plugins.base import AtlasPlugin, HealthStatus, PluginInfo
+from atlas_plugins.context import is_interactive, reset_interactive, set_interactive
 from atlas_plugins.credentials import (
     CredentialBackend,
     CredentialStore,
@@ -24,4 +25,7 @@ __all__ = [
     "PluginRegistry",
     "REGISTERED_PLUGINS",
     "SqlAlchemyBackend",
+    "is_interactive",
+    "reset_interactive",
+    "set_interactive",
 ]

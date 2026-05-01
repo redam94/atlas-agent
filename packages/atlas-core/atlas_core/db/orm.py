@@ -176,6 +176,10 @@ class IngestionJobORM(Base):
 
     __tablename__ = "ingestion_jobs"
 
+    __table_args__ = (
+        Index("ingestion_jobs_status_notified_at_idx", "status", "notified_at"),
+    )
+
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         primary_key=True,
@@ -196,6 +200,8 @@ class IngestionJobORM(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    discord_channel_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notified_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     pagerank_status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="skipped"
     )
