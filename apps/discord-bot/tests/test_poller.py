@@ -62,6 +62,7 @@ async def test_poll_once_no_fallback_and_no_channel_id_skips(mock_bot):
 
     await poll_once(bot=bot, api_client=api, fallback_channel_id=None)
 
+    bot.get_channel.assert_not_called()
     channel.send.assert_not_called()
     # still marks notified to prevent re-processing
     api.mark_notified.assert_called_once_with("job-3")
@@ -75,6 +76,8 @@ async def test_poll_once_api_error_does_not_raise(mock_bot):
 
     # Should not raise
     await poll_once(bot=bot, api_client=api, fallback_channel_id="888")
+
+    api.mark_notified.assert_not_called()
 
 
 @pytest.mark.asyncio
