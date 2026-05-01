@@ -39,7 +39,7 @@ from atlas_api.deps import (
     get_session,
     get_settings,
 )
-from atlas_api.services.agent_runner import AgentEventType, _to_anthropic_tool, run_tool_loop
+from atlas_api.services.agent_runner import AgentEventType, to_anthropic_tool, run_tool_loop
 
 router = APIRouter()
 log = structlog.get_logger("atlas.api.ws")
@@ -211,7 +211,7 @@ async def _handle_chat_message(
         enabled = list(project.enabled_plugins or [])
         schemas = plugin_registry.get_tool_schemas(enabled=enabled)
         if schemas:
-            tools_payload = [_to_anthropic_tool(s) for s in schemas]
+            tools_payload = [to_anthropic_tool(s) for s in schemas]
 
     # 7. Stream events via agent runner
     assistant_text_parts: list[str] = []

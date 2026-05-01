@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from atlas_core.models.llm import ToolResult
 from atlas_core.providers._fake import FakeProvider
 from atlas_plugins import FakePlugin, HealthStatus, PluginRegistry
 from atlas_plugins.context import is_interactive
@@ -162,3 +161,78 @@ async def test_run_tool_loop_contextvar_reset_after_done():
         assert is_interactive() is True  # restored after generator exhausted
     finally:
         reset_interactive(token)
+
+
+@pytest.mark.asyncio
+async def test_run_tool_loop_provider_error_yields_error_event():
+    """Provider error event → runner yields ERROR event and stops."""
+    provider = FakeProvider(error_on_call=True)
+    messages = [{"role": "user", "content": "hi"}]
+    events = []
+    async for event in run_tool_loop(
+        provider=provider,
+        messages=messages,
+        tools_payload=None,
+        plugin_registry=None,
+        interactive=True,
+    ):
+        events.append(event)
+
+    assert any(e.type == AgentEventType.ERROR for e in events)
+    # No DONE event on error
+    assert all(e.type != AgentEventType.DONE for e in events)
+
+
+@pytest.mark.asyncio
+async def test_run_tool_loop_tool_error_returns_error_result(fake_registry):
+    """Tool that raises → ToolResult(error=...) returned, loop continues."""
+    provider = FakeProvider(
+        scripted_turns=[
+            {"tool_calls": [{"id": "c1", "tool": "fake__fail", "args": {}}]},
+            {"text": "tool failed but I handled it"},
+        ]
+    )
+    messages = [{"role": "user", "content": "fail"}]
+    events = []
+    async for event in run_tool_loop(
+        provider=provider,
+        messages=messages,
+        tools_payload=[],
+        plugin_registry=fake_registry,
+        interactive=True,
+    ):
+        events.append(event)
+
+    tool_result_events = [e for e in events if e.type == AgentEventType.TOOL_RESULT]
+    assert len(tool_result_events) == 1
+    assert tool_result_events[0].data["ok"] is False
+    # Loop continues to DONE despite tool error
+    assert events[-1].type == AgentEventType.DONE
+    done_tool_calls = events[-1].data["tool_calls"]
+    assert done_tool_calls[0]["error"] is not None
+
+
+@pytest.mark.asyncio
+async def test_run_tool_loop_cap_injects_instruction_message(fake_registry):
+    """At the 10-turn cap, a system instruction message is appended to messages."""
+    scripted = [
+        {"tool_calls": [{"id": f"c{i}", "tool": "fake__recurse", "args": {"depth": i}}]}
+        for i in range(10)
+    ] + [{"text": "done"}]
+    provider = FakeProvider(scripted_turns=scripted)
+    messages = [{"role": "user", "content": "recurse"}]
+
+    async for _ in run_tool_loop(
+        provider=provider,
+        messages=messages,
+        tools_payload=[{"name": "fake__recurse", "description": "", "input_schema": {}}],
+        plugin_registry=fake_registry,
+        interactive=True,
+    ):
+        pass
+
+    # The instruction message is appended to the messages list on the 10th tool turn
+    assert any(
+        isinstance(m.get("content"), str) and "Tool call limit reached" in m["content"]
+        for m in messages
+    )

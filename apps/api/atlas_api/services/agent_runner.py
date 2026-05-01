@@ -17,9 +17,10 @@ from enum import Enum
 from typing import Any
 
 import structlog
-from atlas_core.models.llm import ModelEventType, ToolSchema
+from atlas_core.models.llm import ModelEventType, ToolResult, ToolSchema
 from atlas_plugins import PluginRegistry
 from atlas_plugins.context import reset_interactive, set_interactive
+from datetime import UTC, datetime
 
 log = structlog.get_logger("atlas.api.agent_runner")
 
@@ -48,7 +49,7 @@ def _decode_tool_name(name: str) -> str:
     return name.replace("__", ".")
 
 
-def _to_anthropic_tool(s: ToolSchema) -> dict[str, Any]:
+def to_anthropic_tool(s: ToolSchema) -> dict[str, Any]:
     return {
         "name": _encode_tool_name(s.name),
         "description": s.description,
@@ -57,7 +58,6 @@ def _to_anthropic_tool(s: ToolSchema) -> dict[str, Any]:
 
 
 def _now_iso() -> str:
-    from datetime import UTC, datetime
     return datetime.now(UTC).isoformat()
 
 
@@ -118,7 +118,6 @@ async def run_tool_loop(
             for call in pending_tool_calls:
                 call_started = time.monotonic()
                 if plugin_registry is None:
-                    from atlas_core.models.llm import ToolResult
                     result = ToolResult(
                         call_id=call["id"],
                         tool=call["tool"],
