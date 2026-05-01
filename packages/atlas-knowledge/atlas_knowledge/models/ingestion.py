@@ -49,6 +49,7 @@ class UrlIngestRequest(AtlasRequestModel):
 
     project_id: UUID
     url: HttpUrl
+    discord_channel_id: str | None = None
 
 
 class IngestionJob(AtlasModel):

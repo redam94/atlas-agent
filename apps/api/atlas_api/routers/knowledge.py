@@ -150,6 +150,9 @@ async def ingest_url_endpoint(
     job_row = await db.get(IngestionJobORM, result.job_id)
     if job_row is None:
         raise HTTPException(status_code=500, detail="ingest created no job row")
+    if payload.discord_channel_id:
+        job_row.discord_channel_id = payload.discord_channel_id
+        await db.flush()
     return ingestion_job_from_orm(job_row)
 
 
