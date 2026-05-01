@@ -38,6 +38,8 @@ class DiscordPlugin(AtlasPlugin):
     def __init__(self, credentials) -> None:
         super().__init__(credentials)
         # In-memory confirmation gate: {token: {"body": str, "channel_id": str, "expires": float}}
+        # NOTE: _pending is process-local. Works correctly only with a single-worker API process.
+        # For multi-worker deployments, migrate to a shared cache (Redis, DB row, etc.).
         self._pending: dict[str, dict[str, Any]] = {}
 
     def get_tools(self) -> list[ToolSchema]:
@@ -81,8 +83,6 @@ class DiscordPlugin(AtlasPlugin):
 
     async def _send_message(self, args: dict[str, Any]) -> dict[str, Any]:
         self._expire_pending()
-        creds = await self._get_credentials()
-        channel_id = creds["default_channel_id"]
 
         confirm_token = args.get("confirm_token")
         body = args.get("body")
@@ -95,6 +95,9 @@ class DiscordPlugin(AtlasPlugin):
 
         if body is None:
             raise ValueError("either body or confirm_token must be provided")
+
+        creds = await self._get_credentials()
+        channel_id = creds["default_channel_id"]
 
         if is_interactive():
             token = str(uuid.uuid4())
