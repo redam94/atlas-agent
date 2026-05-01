@@ -21,6 +21,9 @@ async def ask_handler(
     await interaction.response.defer()
     try:
         text = await api_client.chat(project_id, prompt)
+    except TimeoutError:
+        await interaction.followup.send("❌ chat timed out")
+        return
     except Exception as e:
         await interaction.followup.send(f"❌ chat failed: {e}")
         return
